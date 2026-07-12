@@ -1,0 +1,33 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Value: true
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Robot Description: robot_description
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SceneMarkers
+      Marker Topic: /scene_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SpawnedObjects
+      Marker Topic: /spawned_objects
+      Value: true
+  Global Options:
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.5
+      Focal Point: [0.0, 0.25, 0.0]

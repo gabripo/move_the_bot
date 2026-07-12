@@ -1,0 +1,30 @@
+{
+  "name": "hmi-arm-control",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenClaw tool plugin for controlling a simulated robotic arm",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "plugin:build": "npm run build",
+    "plugin:validate": "echo 'Plugin valid'"
+  },
+  "dependencies": {
+    "openclaw": "^2026.5.0",
+    "typebox": "^1.1.39",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/ws": "^8.5.10",
+    "@types/node": "^20.11.0"
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.0",
+      "minGatewayVersion": ">=2026.3.0"
+    }
+  }
+}

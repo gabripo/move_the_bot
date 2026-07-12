@@ -1,0 +1,39 @@
+services:
+  ros2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ros2
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               source /ros_ws/install/setup.bash &&
+               ros2 launch mock_hmi_core deploy.launch.py"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./models:/ros_ws/src/mock_hmi_core/models
+      - ./urdf:/ros_ws/src/mock_hmi_core/urdf
+
+  bridge:
+    image: osrf/ros:humble-ros-base
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+               ros2 run rosbridge_server rosbridge_websocket"
+    ports:
+      - "9091:9090"
+
+  agent-mock:
+    build: ./agents/agent_core
+    environment:
+      - OLLAMA_URL=http://mock-ollama:5000/generate
+    depends_on:
+      - ros2
+      - mock-ollama
+
+  mock-ollama:
+    image: python:3.12-slim
+    command: python -m http.server 5000
+    volumes:
+      - ./tests/fixtures/ollama-mock:/app
+    working_dir: /app
+    ports:
+      - "5000:5000"

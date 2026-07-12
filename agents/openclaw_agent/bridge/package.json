@@ -1,0 +1,18 @@
+{
+  "name": "perception-forwarder-bridge",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Node.js bridge from ROS 2 perception topics to OpenClaw Gateway using openclaw-sdk",
+  "main": "dist/forwarder_bridge.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/forwarder_bridge.js"
+  },
+  "dependencies": {
+    "openclaw-sdk": "^2026.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }
+}

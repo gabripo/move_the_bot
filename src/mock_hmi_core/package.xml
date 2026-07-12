@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mock_hmi_core</name>
+  <version>0.1.0</version>
+  <description>Spatial HMI Robotics core package</description>
+  <maintainer email="user@example.com">user</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>rosbridge_server</depend>
+  <depend>robot_state_publisher</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

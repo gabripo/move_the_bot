@@ -1,0 +1,125 @@
+version: "3.9"
+
+x-common-env: &common-env
+  ROS_DOMAIN_ID: 42
+
+services:
+  # ═══════════════════════════════════════════════
+  # Always-on services
+  # ═══════════════════════════════════════════════
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: spatial_hmi_ollama
+    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    entrypoint: ["/bin/sh", "-c"]
+    tty: true
+    volumes:
+      - ollama_data:/root/.ollama
+      - model_cache:/models/cache
+    environment:
+      OLLAMA_KEEP_MODEL: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      interval: 5s
+      retries: 30
+      start_period: 15s
+    command: >
+      ollama serve
+
+  ros2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ros2
+    container_name: spatial_hmi_ros2
+    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    ports:
+      - "9090:9090"
+    environment:
+      <<: *common-env
+      OLLAMA_URL: http://ollama:11434/api/generate
+      MODEL_CACHE_DIR: /models/cache
+    volumes:
+      - model_cache:/models/cache
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: spatial_hmi_web
+    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    ports:
+      - "80:80"
+    depends_on:
+      - ros2
+      - stt
+
+  stt:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.stt
+    container_name: spatial_hmi_stt
+    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    ports:
+      - "8000"
+
+  # ═══════════════════════════════════════════════
+  # Profile: ollama-agent (DEFAULT)
+  # ═══════════════════════════════════════════════
+
+  agent-core:
+    profiles: ["ollama-agent", "all"]
+    build:
+      context: ../agents/agent_core
+    container_name: spatial_hmi_agent_core
+    environment:
+      <<: *common-env
+      OLLAMA_URL: http://ollama:11434/api/generate
+    depends_on:
+      ros2:
+        condition: service_started
+
+  # ═══════════════════════════════════════════════
+  # Profile: openclaw-agent
+  # ═══════════════════════════════════════════════
+
+  openclaw:
+    profiles: ["openclaw-agent", "all"]
+    build:
+      context: ../agents/openclaw_agent/plugin
+      dockerfile: Dockerfile.openclaw
+    container_name: spatial_hmi_openclaw
+    environment:
+      OPENCLAW_MODEL: ollama/llama3.2
+      OLLAMA_BASE_URL: http://ollama:11434
+      SKETCHFAB_API_KEY: ${SKETCHFAB_API_KEY:-}
+    volumes:
+      - openclaw_data:/root/.openclaw
+      - model_cache:/models/cache
+    depends_on:
+      ros2:
+        condition: service_started
+
+  perception-bridge:
+    profiles: ["openclaw-agent", "all"]
+    build:
+      context: ../agents/openclaw_agent/bridge
+      dockerfile: Dockerfile.bridge
+    container_name: spatial_hmi_perception_bridge
+    environment:
+      OPENCLAW_GATEWAY_URL: ws://openclaw:1455
+      OPENCLAW_FORWARDER_BACKEND: ${OPENCLAW_FORWARDER_BACKEND:-sdk}
+      MODEL_CACHE_DIR: /models/cache
+    volumes:
+      - model_cache:/models/cache
+    depends_on:
+      - openclaw
+      - ros2
+
+volumes:
+  ollama_data:
+  openclaw_data:
+  model_cache:
