@@ -39,7 +39,8 @@ POSITION_KEYWORDS = {
 
 SYSTEM_PROMPT = """You are a robot arm controller. Output ONLY JSON.
 Actions: move_to, grasp, release, spawn, none.
-Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25)."""
+Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25).
+If you receive a name of an object without instructions, assume a move_to action."""
 
 
 def threejs_to_ik(x, y, z):
@@ -48,7 +49,6 @@ def threejs_to_ik(x, y, z):
 
 
 def extract_numbers(text):
-    return [float(x) for x in re.findall(r"-?\d+\.?\d*", text)]
     return [float(x) for x in re.findall(r"-?\d+\.?\d*", text)]
 
 
@@ -103,6 +103,14 @@ def parse_voice_command(text, spawned_objects=None):
         if len(nums) == 1:
             return {"action": "move_to", "target": {"x": nums[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
         return {"action": "move_to", "target": {"x": MIDDLE[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
+
+    if spawned_objects:
+        obj = find_object(t)
+        if obj and obj in spawned_objects:
+            return {"action": "move_to", "target": dict(spawned_objects[obj])}
+        for name, pos in spawned_objects.items():
+            if name in t:
+                return {"action": "move_to", "target": dict(pos)}
 
     return None
 
@@ -173,7 +181,25 @@ class AgenticCoreNode(Node):
                 objects_info = "Objects: " + ", ".join(
                     f'"{n}" at ({p["x"]},{p["y"]},{p["z"]})' for n, p in self.spawned_objects.items()
                 ) + "\n"
-            prompt = f"Hand: ({pos.x:.3f},{pos.y:.3f},{pos.z:.3f})\n{objects_info}Voice: \"{voice}\"\nExamples:\n  \"move to 0.2 0.1 0.3\" → {{\"action\":\"move_to\",\"target\":{{\"x\":0.2,\"y\":0.1,\"z\":0.3}}}}\n  \"move to apple\" → {{\"action\":\"move_to\",\"target\":{{\"x\":0.0,\"y\":0.25,\"z\":0.25}}}}\n  \"create apple\" → {{\"action\":\"spawn\",\"object\":\"apple\",\"target\":{{\"x\":0,\"y\":0.25,\"z\":0.25}}}}\n  \"grasp\" → {{\"action\":\"grasp\"}}\n  \"release\" → {{\"action\":\"release\"}}\nJSON:"
+            object_examples = ""
+            if self.spawned_objects:
+                for obj_name, obj_pos in self.spawned_objects.items():
+                    object_examples += (
+                        f'  "move to {obj_name}" → {{"action":"move_to",'
+                        f'"target":{{"x":{obj_pos["x"]},"y":{obj_pos["y"]},"z":{obj_pos["z"]}}}}}\n'
+                    )
+            prompt = (
+                f"Hand: ({pos.x:.3f},{pos.y:.3f},{pos.z:.3f})\n"
+                f"{objects_info}"
+                f'Voice: "{voice}"\n'
+                "Examples:\n"
+                '  "move to 0.2 0.1 0.3" → {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}\n'
+                f"{object_examples}"
+                '  "create apple" → {"action":"spawn","object":"apple","target":{"x":0,"y":0.25,"z":0.25}}\n'
+                '  "grasp" → {"action":"grasp"}\n'
+                '  "release" → {"action":"release"}\n'
+                "JSON:"
+            )
             response = self.query_ollama(prompt)
             if response is None:
                 self._log("LLM: request failed")
