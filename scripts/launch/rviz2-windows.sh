@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$PROJECT_DIR/docker/docker-compose.yml"
 
+. "$SCRIPT_DIR/_arch_detect.sh"
+
 echo "============================================"
 echo " RViz2 Visualization — Windows (WSL2)"
 echo "============================================"

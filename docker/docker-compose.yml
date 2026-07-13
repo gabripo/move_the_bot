@@ -28,9 +28,10 @@ services:
       ollama serve
 
   ros2:
+    platform: ${ROS2_PLATFORM:-}
     build:
       context: ..
-      dockerfile: docker/Dockerfile.ros2
+      dockerfile: ${ROS2_DOCKERFILE:-docker/Dockerfile.ros2}
     container_name: spatial_hmi_ros2
     profiles: ["ollama-agent", "openclaw-agent", "all"]
     ports:

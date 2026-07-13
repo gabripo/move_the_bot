@@ -6,6 +6,8 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$PROJECT_DIR/docker/docker-compose.yml"
 PROFILE="all"
 
+. "$SCRIPT_DIR/_arch_detect.sh"
+
 echo "============================================"
 echo " Launching: $PROFILE (both agents)"
 echo " Compose:   $COMPOSE_FILE"

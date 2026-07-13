@@ -6,6 +6,8 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$PROJECT_DIR/docker/docker-compose.yml"
 PROFILE="ollama-agent"
 
+. "$SCRIPT_DIR/_arch_detect.sh"
+
 echo "============================================"
 echo " Launching: $PROFILE"
 echo " Compose:   $COMPOSE_FILE"
