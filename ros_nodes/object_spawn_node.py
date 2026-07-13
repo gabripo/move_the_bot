@@ -61,9 +61,9 @@ class ObjectSpawnNode(Node):
         marker.mesh_use_embedded_materials = True
         marker.pose.position = Point(x=ik_x, y=ik_y, z=ik_z)
         marker.pose.orientation.w = 1.0
-        marker.scale.x = 0.1
-        marker.scale.y = 0.1
-        marker.scale.z = 0.1
+        marker.scale.x = 1.0
+        marker.scale.y = 1.0
+        marker.scale.z = 1.0
         marker.color.a = 1.0
         marker.color.r = 1.0
         marker.color.g = 1.0
