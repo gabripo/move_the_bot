@@ -2,6 +2,7 @@ class RobotViewer {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
     this.sceneObjects = [];
+    this.modelCache = new Map();
     this.setupScene();
     this.buildArm();
     this.animate();
@@ -180,7 +181,6 @@ class RobotViewer {
   }
 
   spawnObject(name, modelPath, x, y, z) {
-    // Remove existing instance of the same object type
     for (let i = this.sceneObjects.length - 1; i >= 0; i--) {
       if (this.sceneObjects[i].name === name) {
         this.scene.remove(this.sceneObjects[i].mesh);
@@ -190,6 +190,70 @@ class RobotViewer {
       }
     }
 
+    const label = this.createLabel(name, x, y, z);
+    const modelUrl = this._resolveModelUrl(name);
+
+    if (modelUrl) {
+      this._addModel(name, modelUrl, x, y, z, label);
+    } else {
+      const mesh = this._makeSphere(x, y, z);
+      this.scene.add(mesh);
+      this.scene.add(label);
+      this.sceneObjects.push({ mesh, label, name });
+    }
+  }
+
+  _resolveModelUrl(name) {
+    const MODEL_MAP = {
+      "apple": "apple.glb",
+      "mug": "mug.glb", "coffee mug": "mug.glb", "coffee": "mug.glb",
+      "bottle": "bottle.glb", "water bottle": "bottle.glb",
+      "cube": "cube.glb", "box": "cube.glb",
+      "sphere": "sphere.glb", "ball": "sphere.glb",
+      "cylinder": "cylinder.glb",
+      "can": "can.glb", "soda can": "can.glb",
+      "table": "table.glb",
+    };
+    const filename = MODEL_MAP[name.trim().toLowerCase()];
+    return filename ? `/models/builtin/${filename}` : null;
+  }
+
+  _addModel(name, url, x, y, z, label) {
+    if (this.modelCache.has(url)) {
+      this._instantiateModel(name, url, x, y, z, label);
+      return;
+    }
+
+    const fallback = this._makeSphere(x, y, z);
+    this.scene.add(fallback);
+    this.scene.add(label);
+    const entry = { mesh: fallback, label, name };
+    this.sceneObjects.push(entry);
+
+    this.loader.load(url, (gltf) => {
+      this.modelCache.set(url, gltf.scene);
+      const clone = gltf.scene.clone();
+      clone.position.set(x, y, z);
+      clone.scale.setScalar(1.0);
+      this.scene.remove(entry.mesh);
+      this.scene.add(clone);
+      entry.mesh = clone;
+    }, undefined, () => {
+      console.warn(`Failed to load GLB: ${url}, keeping sphere`);
+    });
+  }
+
+  _instantiateModel(name, url, x, y, z, label) {
+    const cached = this.modelCache.get(url);
+    const clone = cached.clone();
+    clone.position.set(x, y, z);
+    clone.scale.setScalar(1.0);
+    this.scene.add(clone);
+    this.scene.add(label);
+    this.sceneObjects.push({ mesh: clone, label, name });
+  }
+
+  _makeSphere(x, y, z) {
     const color = new THREE.Color(
       Math.random() * 0.8 + 0.2,
       Math.random() * 0.8 + 0.2,
@@ -200,11 +264,7 @@ class RobotViewer {
       new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.6 })
     );
     mesh.position.set(x, y, z);
-
-    const label = this.createLabel(name, x, y, z);
-    this.scene.add(mesh);
-    this.scene.add(label);
-    this.sceneObjects.push({ mesh, label, name });
+    return mesh;
   }
 
   resetEnvironment() {
