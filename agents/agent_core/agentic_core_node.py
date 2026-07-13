@@ -39,8 +39,7 @@ POSITION_KEYWORDS = {
 
 SYSTEM_PROMPT = """You are a robot arm controller. Output ONLY JSON.
 Actions: move_to, grasp, release, spawn, none.
-Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25).
-If you receive a name of an object without instructions, assume a move_to action."""
+Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25)."""
 
 
 def threejs_to_ik(x, y, z):
