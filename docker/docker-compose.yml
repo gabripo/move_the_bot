@@ -2,6 +2,7 @@ version: "3.9"
 
 x-common-env: &common-env
   ROS_DOMAIN_ID: 42
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b-instruct-q4_K_M}
 
 services:
   # ═══════════════════════════════════════════════
@@ -39,7 +40,6 @@ services:
     environment:
       <<: *common-env
       OLLAMA_URL: http://ollama:11434/api/generate
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b-instruct-q4_K_M}
       MODEL_CACHE_DIR: /models/cache
     volumes:
       - model_cache:/models/cache
@@ -80,7 +80,6 @@ services:
     environment:
       <<: *common-env
       OLLAMA_URL: http://ollama:11434/api/generate
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
     depends_on:
       ros2:
         condition: service_started
