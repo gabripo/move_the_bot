@@ -11,8 +11,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: spatial_hmi_ollama
-    profiles: ["ollama-agent", "openclaw-agent", "all"]
-    entrypoint: ["/bin/sh", "-c"]
+    profiles: [ "ollama-agent", "openclaw-agent", "all" ]
+    entrypoint: [ "/bin/sh", "-c" ]
     tty: true
     volumes:
       - ollama_data:/root/.ollama
@@ -20,7 +20,7 @@ services:
     environment:
       OLLAMA_KEEP_MODEL: "true"
     healthcheck:
-      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      test: [ "CMD-SHELL", "ollama list 2>/dev/null || exit 1" ]
       interval: 5s
       retries: 30
       start_period: 15s
@@ -33,12 +33,13 @@ services:
       context: ..
       dockerfile: ${ROS2_DOCKERFILE:-docker/Dockerfile.ros2}
     container_name: spatial_hmi_ros2
-    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    profiles: [ "ollama-agent", "openclaw-agent", "all" ]
     ports:
       - "9090:9090"
     environment:
       <<: *common-env
       OLLAMA_URL: http://ollama:11434/api/generate
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b-instruct-q4_K_M}
       MODEL_CACHE_DIR: /models/cache
     volumes:
       - model_cache:/models/cache
@@ -51,7 +52,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.web
     container_name: spatial_hmi_web
-    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    profiles: [ "ollama-agent", "openclaw-agent", "all" ]
     ports:
       - "80:80"
     depends_on:
@@ -63,7 +64,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.stt
     container_name: spatial_hmi_stt
-    profiles: ["ollama-agent", "openclaw-agent", "all"]
+    profiles: [ "ollama-agent", "openclaw-agent", "all" ]
     ports:
       - "8000"
 
@@ -72,7 +73,7 @@ services:
   # ═══════════════════════════════════════════════
 
   agent-core:
-    profiles: ["ollama-agent", "all"]
+    profiles: [ "ollama-agent", "all" ]
     build:
       context: ../agents/agent_core
     container_name: spatial_hmi_agent_core
@@ -89,7 +90,7 @@ services:
   # ═══════════════════════════════════════════════
 
   openclaw:
-    profiles: ["openclaw-agent", "all"]
+    profiles: [ "openclaw-agent", "all" ]
     build:
       context: ../agents/openclaw_agent/plugin
       dockerfile: Dockerfile.openclaw
@@ -106,7 +107,7 @@ services:
         condition: service_started
 
   perception-bridge:
-    profiles: ["openclaw-agent", "all"]
+    profiles: [ "openclaw-agent", "all" ]
     build:
       context: ../agents/openclaw_agent/bridge
       dockerfile: Dockerfile.bridge

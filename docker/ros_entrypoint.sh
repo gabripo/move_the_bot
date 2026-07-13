@@ -4,9 +4,6 @@ set -e
 source /opt/ros/humble/setup.bash
 source /ros_ws/install/setup.bash
 
-# Pull the LLM model via Ollama HTTP API
-# (ollama CLI launcher requires a TTY, so we use the API directly)
-OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
 echo "Pulling model ${OLLAMA_MODEL}..."
 python3 -c "
 import requests, json, time
