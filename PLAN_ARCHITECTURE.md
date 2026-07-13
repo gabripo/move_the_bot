@@ -171,6 +171,112 @@ The interface between any agent and the rest of the system is defined solely by 
 4. Add a Docker Compose profile and container
 5. Done — no other system changes required
 
+## Ollama Agent Internals (`agentic_core_node.py`)
+
+The `agent-core` service runs a single Python ROS 2 node that bridges natural language to ROS 2 topics via Ollama.
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OLLAMA_URL` | `http://ollama:11434/api/generate` | Ollama HTTP API endpoint |
+| `MODEL` (hardcoded) | `llama3.2` | Model name sent in the Ollama request |
+| `temperature` (hardcoded) | `0.1` | Low temperature for deterministic output |
+| `stream` | `false` | Non-streaming — waits for full JSON response |
+
+### Data Flow
+
+```
+Voice command or typed text
+        │
+        ▼
+/voice_commands topic (std_msgs/String)
+        │
+        ▼
+AgenticCoreNode.voice_callback()
+  └── stores text in self.current_voice
+
+  (every 0.5s via a ROS timer)
+AgenticCoreNode.reasoning_loop()
+
+  Step 1: Try rule-based keyword parser (parse_voice_command)
+    ├── Matches "move left", "spawn apple", "grasp", etc.
+    │   └── Returns action dict immediately (no LLM call)
+    └── No match → Step 2
+
+  Step 2: Build prompt and query Ollama
+    Prompt includes:
+    ├── Current hand position (/spatial_coords)
+    ├── Known spawned object positions
+    ├── The raw voice command text
+    └── Few-shot JSON examples
+        "move to 0.2 0.1 0.3" → {"action":"move_to",...}
+        "create apple" → {"action":"spawn",...}
+        "grasp" → {"action":"grasp"}
+
+    HTTP POST to OLLAMA_URL:
+    {
+      "model": "llama3.2",
+      "prompt": "...",
+      "system": "You are a robot arm controller...",
+      "stream": false,
+      "temperature": 0.1
+    }
+
+  Step 3: Parse response
+    ├── json.loads(response["response"])
+    └── On failure → log and drop
+
+  Step 4: Execute action
+
+### Action Dispatch
+
+| `action` field | ROS Topic | Message | Notes |
+|----------------|-----------|---------|-------|
+| `move_to` | `/target_goal` | `geometry_msgs/Point` | Coordinates converted from Three.js frame → IK frame via `threejs_to_ik()` |
+| `grasp` | `/grasp_command` | `String("grasp")` | |
+| `release` | `/grasp_command` | `String("release")` | |
+| `spawn` | `/object_spawn` | `String(JSON)` | `{"name":"...","path":"...","x":...,"y":...,"z":...}` |
+| `stop` | — | — | Logged only |
+| `none` | — | — | Logged only |
+
+### System Prompt
+
+Hardcoded in `agentic_core_node.py` line 29:
+
+```
+You are a robot arm controller. Output ONLY JSON.
+Actions: move_to, grasp, release, spawn, none.
+Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25).
+```
+
+A more detailed Markdown version is kept at `prompts/system_prompt.md` for reference.
+
+### Rule-Based Parser (LLM Bypass)
+
+The keyword parser (`parse_voice_command` at line 52) handles common patterns without invoking Ollama:
+
+| Pattern | Action |
+|---------|--------|
+| `"spawn <name>"` with optional `"at x y z"` | `spawn` |
+| `"grab"` / `"pick"` / `"grasp"` | `grasp` |
+| `"release"` / `"drop"` / `"open"` | `release` |
+| `"move <direction>"` (left/right/up/down/front/back) | `move_to` with keyword-derived offsets |
+| `"move to <object>"` | `move_to` with stored object position |
+| `"reset"` | Publishes to `/reset_command` |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `agents/agent_core/agentic_core_node.py` | The entire agent: Ollama HTTP call, prompt building, response parsing, ROS pub/sub, action execution, rule parser |
+| `agents/agent_core/prompts/system_prompt.md` | Detailed system prompt (documentation) |
+| `agents/agent_core/prompts/object_spawn_prompt.md` | Spawn-specific prompt details |
+| `agents/agent_core/Dockerfile` | Container definition |
+| `tests/fixtures/ollama-mock/` | 6 canned JSON response files for unit tests |
+| `tests/conftest.py` | Mock Ollama HTTP server fixture |
+| `tests/unit/test_agent_protocol.py` | Protocol contract tests |
+
 ## Service Topology (Docker Compose)
 
 ```yaml
