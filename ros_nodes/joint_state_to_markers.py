@@ -170,14 +170,15 @@ class JointStateToMarkers(Node):
             theta1 = msg.position[msg.name.index("base_joint")]
             theta2 = msg.position[msg.name.index("shoulder_joint")]
             theta3 = msg.position[msg.name.index("elbow_joint")]
+            grip = msg.position[msg.name.index("gripper_joint")]
         except (ValueError, IndexError):
             self.get_logger().warn("Missing joint in JointState message")
             return
 
-        markers = self._compute_markers(theta1, theta2, theta3)
+        markers = self._compute_markers(theta1, theta2, theta3, grip)
         self.pub.publish(markers)
 
-    def _compute_markers(self, theta1, theta2, theta3):
+    def _compute_markers(self, theta1, theta2, theta3, grip=0.0):
         markers = MarkerArray()
         now = self.get_clock().now().to_msg()
 
@@ -226,9 +227,18 @@ class JointStateToMarkers(Node):
                         (0.04, 0.04, 0.25), forearm_color, stamp=now)
         markers.markers.append(m)
 
-        m = make_marker("gripper", p_gripper,
-                        (0.0, 0.0, 0.0, 1.0),
-                        (0.08, 0.03, 0.03), gripper_color, stamp=now)
+        spread = 0.03 - grip * 0.4
+        finger_dir = mat_vec_mul(R_z1, mat_vec_mul(r23, (0.0, 1.0, 0.0)))
+
+        left_finger_pos = vec_add(p_gripper, vec_scale(finger_dir, spread))
+        right_finger_pos = vec_add(p_gripper, vec_scale(finger_dir, -spread))
+        finger_q = quaternion_from_direction(*mat_vec_mul(R_z1, mat_vec_mul(r23, (0.0, 0.0, 1.0))))
+
+        m = make_marker("gripper_left", left_finger_pos, finger_q,
+                        (0.01, 0.03, 0.04), gripper_color, stamp=now)
+        markers.markers.append(m)
+        m = make_marker("gripper_right", right_finger_pos, finger_q,
+                        (0.01, 0.03, 0.04), gripper_color, stamp=now)
         markers.markers.append(m)
 
         for name, pos in [("base_joint", (0.0, 0.0, 0.0)),
