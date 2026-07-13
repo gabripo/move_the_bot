@@ -122,12 +122,20 @@ class RobotViewer {
     forearm.position.y = 0.125;
     this.forearmGroup.add(forearm);
 
-    const gripper = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.03, 0.03),
-      new THREE.MeshStandardMaterial({ color: 0xcccc33 })
+    const gripMat = new THREE.MeshStandardMaterial({ color: 0xcccc33 });
+    this.gripperLeft = new THREE.Mesh(
+      new THREE.BoxGeometry(0.01, 0.03, 0.04),
+      gripMat
     );
-    gripper.position.set(0, 0.25, 0);
-    this.forearmGroup.add(gripper);
+    this.gripperLeft.position.set(-0.03, 0.25, 0);
+    this.forearmGroup.add(this.gripperLeft);
+
+    this.gripperRight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.01, 0.03, 0.04),
+      gripMat
+    );
+    this.gripperRight.position.set(0.03, 0.25, 0);
+    this.forearmGroup.add(this.gripperRight);
 
     // End-effector indicator in world space
     const sphere = new THREE.Mesh(
@@ -151,6 +159,13 @@ class RobotViewer {
     const zIK = L0 + L1 * Math.cos(th2) + L2 * Math.cos(th2 + th3);
     const xIK = r * Math.cos(th1);
     const yIK = r * Math.sin(th1);
+
+    if (positions.length > 3 && this.gripperLeft && this.gripperRight) {
+      const grip = positions[3];
+      const spread = 0.03 - grip * 0.4;
+      this.gripperLeft.position.x = -spread;
+      this.gripperRight.position.x = spread;
+    }
 
     const [ex, ey, ez] = ik_to_threejs(xIK, yIK, zIK);
 
