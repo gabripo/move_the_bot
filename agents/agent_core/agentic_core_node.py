@@ -142,7 +142,9 @@ class AgenticCoreNode(Node):
         try:
             resp = requests.post(OLLAMA_URL, json=payload, timeout=30)
             resp.raise_for_status()
-            return resp.json()["response"]
+            data = resp.json()
+            self.get_logger().info(f"Ollama response: {data}")
+            return data["response"]
         except Exception as e:
             self.get_logger().error(f"Ollama error: {e}")
             return None
