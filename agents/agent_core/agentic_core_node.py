@@ -10,7 +10,7 @@ from std_msgs.msg import String
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434/api/generate")
 OLLAMA_MODEL = os.environ.get(
     "OLLAMA_MODEL",
-    "llama3.2",
+    "llama3.2:3b-instruct-q4_K_M",
 )
 # Recommended models (light → capable):
 #   llama3.2:3b-instruct-q4_K_M  (fast, ~2 GB RAM)
