@@ -16,7 +16,7 @@ class ObjectSpawnNode(Node):
     def __init__(self):
         super().__init__("object_spawn_node")
         self.sub = self.create_subscription(String, "/object_spawn", self.on_spawn, 10)
-        self.marker_pub = self.create_publisher(MarkerArray, "/virtual_scene", 10)
+        self.marker_pub = self.create_publisher(MarkerArray, "/visualization_marker_array", 10)
         self.spawned_ids = {}
         self.next_id = 1
         self.get_logger().info("Object Spawn Node started")

@@ -97,3 +97,16 @@
 - A server-side FastAPI container with `openai-whisper` tiny model is simpler to deploy, has no browser compatibility issues, downloads the model once during Docker build, and uses standard HTTP POST for audio upload
 - Audio capture uses the standard `MediaRecorder` API (supported by all browsers) and sends the `.webm` blob to the server via `fetch()` — works in Firefox, Chrome, and Safari
 - The small Whisper tiny model (~150MB) runs adequately fast on CPU for short voice commands (2–5s of audio → 3–10s transcription on Docker amd64 emulation)
+
+## 14. Mesa software OpenGL for RViz2 in Docker on macOS
+
+**Decision:** Install `mesa-utils`, `libgl1-mesa-glx`, and `libgl1-mesa-dri` in the ROS 2 Docker image, and pass `LIBGL_ALWAYS_SOFTWARE=1`, `MESA_GL_VERSION_OVERRIDE=3.3`, `MESA_GLSL_VERSION_OVERRIDE=330` when launching RViz2.
+
+**Rationale:**
+- Docker Desktop for Mac provides no GPU/GLX passthrough — the container's attempt to create a hardware OpenGL context fails with `No matching fbConfigs or visuals found`
+- Mesa's software rasterizer (`llvmpipe`/`softpipe`) provides software-based OpenGL that works without a GPU
+- `LIBGL_ALWAYS_SOFTWARE=1` ensures Mesa uses the software path even if it detects hardware
+- `GALLIUM_DRIVER=llvmpipe` selects the LLVM-based Gallium driver (supports OpenGL 3.3+) over the default `softpipe` (limited to OpenGL ~1.5)
+- `MESA_GL_VERSION_OVERRIDE=3.3` and `MESA_GLSL_VERSION_OVERRIDE=330` are required because Ogre3D (RViz2's renderer) requests a specific OpenGL version that the software renderer must report correctly
+- The convenience script `rviz2-macos.sh` includes both the rebuild step and the environment variables; users running manually must add `-e` flags
+- On Linux, native X11 GLX works; on macOS, Xvfb + x11vnc is used because XQuartz's GLX bridge is incompatible with Mesa software rendering in Docker. The `rviz2_vnc.sh` wrapper starts a virtual X server with GLX, shares the display via VNC on port 5900, and uses Mesa `llvmpipe` for software OpenGL 3.3+.

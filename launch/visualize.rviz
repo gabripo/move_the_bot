@@ -17,11 +17,11 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Name: SceneMarkers
-      Marker Topic: /scene_markers
+      Marker Topic: /visualization_marker_array
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Name: SpawnedObjects
-      Marker Topic: /spawned_objects
+      Marker Topic: /visualization_marker_array
       Value: true
   Global Options:
     Fixed Frame: base_link

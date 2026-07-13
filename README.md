@@ -136,58 +136,33 @@ The `deploy.launch.py` and `visualize.launch.py` ROS 2 launch files control whic
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | ollama-agent | Ollama API endpoint. Change to `http://host.docker.internal:11434/api/generate` to use a host-side Ollama. |
 | `ROS_DOMAIN_ID` | `42` | all | ROS 2 DDS domain ID. Change if multiple ROS 2 stacks run on the same network. |
 
-## RViz2 Visualization — X11 Forwarding Setup
+## RViz2 Visualization
 
-The `visualize.launch.py` file runs RViz2 inside the Docker `ros2` container. To see the RViz2 window on your host desktop, you need X11 forwarding configured for your OS.
+The `visualize.launch.py` file runs RViz2 inside the Docker `ros2` container.
 
 ### macOS
 
-**1. Install XQuartz**
+Docker Desktop for Mac has no GPU passthrough, so RViz2 uses a virtual framebuffer (Xvfb) with Mesa software rendering, shared via VNC.
+
+**1. Launch with RViz2**
+
+Just run the convenience script — it rebuilds, starts everything, and prints VNC connection info:
 
 ```bash
-brew install --cask xquartz
-```
-
-Log out and back in, or restart your machine.
-
-**2. Allow XQuartz network connections**
-
-Open XQuartz, go to **Settings → Security** and check **Allow connections from network clients**, or run:
-
-```bash
-defaults write org.xquartz.X11 enable_connections -bool true
-```
-
-Restart XQuartz.
-
-**3. Authorize your IP**
-
-```bash
-xhost + $(ipconfig getifaddr en0)
-```
-
-(Replace `en0` with `en1` if you use Wi-Fi.)
-
-**4. Launch with RViz2**
-
-```bash
-# Via convenience script:
 ./scripts/launch/rviz2-macos.sh
-
-# Or directly:
-# Start the stack in the background first
-docker compose -f docker/docker-compose.yml --profile ollama-agent up -d
-
-# Launch RViz2 into the running container
-docker compose -f docker/docker-compose.yml --profile ollama-agent run \
-  --rm \
-  -e DISPLAY=$(ipconfig getifaddr en0):0 \
-  -v /tmp/.X11-unix:/tmp/.X11-unix \
-  ros2 \
-  ros2 launch mock_hmi_core visualize.launch.py
 ```
 
-RViz2 opens as a native window. Close it with Ctrl+C in the terminal when done.
+**2. Connect to VNC**
+
+When the script says `Connect to localhost:5901`:
+- Press **Cmd+K** in Finder, enter `vnc://localhost:5901`, use password `rviz2`
+- Or use any VNC client (TigerVNC: `brew install tigervnc && vncviewer localhost:5901`)
+
+The RViz2 window appears inside the VNC session.
+
+**3. Stop**
+
+Press **Ctrl+C** in the terminal running the script. The container and VNC server stop automatically.
 
 ---
 
@@ -218,7 +193,7 @@ docker compose -f docker/docker-compose.yml --profile ollama-agent run \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v $HOME/.Xauthority:/root/.Xauthority:ro \
   ros2 \
-  ros2 launch mock_hmi_core visualize.launch.py
+  /rviz2.sh
 ```
 
 No extra software needed — works out of the box on any Linux desktop.
@@ -269,7 +244,7 @@ docker compose -f docker/docker-compose.yml --profile ollama-agent run \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   ros2 \
-  ros2 launch mock_hmi_core visualize.launch.py
+  /rviz2.sh
 ```
 
 **Alternative — WSL2 native with WSLg (Windows 11):**  
@@ -282,10 +257,13 @@ If you have Windows 11 with WSLg, X11 forwarding works automatically without VcX
 | Symptom | Fix |
 |---------|-----|
 | `cannot connect to X server` | X11 server isn't running or `xhost +` wasn't run |
+| `could not connect to display` | (macOS VNC) Connection refused — press Ctrl+C to stop, wait 5s, and re-run the script |
 | Window opens but is completely black | Check `docker logs spatial_hmi_ros2` for errors; ensure `robot_state_publisher` started |
 | RViz2 shows grid but no arm model | The `robot_description` parameter wasn't loaded — the URDF might not be found |
 | `Error: package 'mock_hmi_core' not found` | Run `colcon build` inside the ros2 container or rebuild the image |
-| Permission denied on `/tmp/.X11-unix` | Ensure the directory exists on your host (`ls /tmp/.X11-unix`) |
+| VNC shows grey screen / no window | Wait a few seconds for RViz2 to initialize; the virtual display starts before RViz2 |
+| `libGL error: No matching fbConfigs or visuals found` / `Failed to create an OpenGL context` (macOS) | Two possible causes: (1) GLX is disabled in XQuartz — run `defaults write org.xquartz.X11 enable_iglx -bool true`, quit and restart XQuartz. (2) Docker Desktop has no GPU passthrough — the image includes Mesa software rendering. Use `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `MESA_GL_VERSION_OVERRIDE=3.3`, `MESA_GLSL_VERSION_OVERRIDE=330`. The convenience script handles both. |
+| `OpenGL 1.5 is not supported` (macOS) | The softpipe Gallium driver only supports OpenGL ~1.5. Set `GALLIUM_DRIVER=llvmpipe` to use the LLVM-based software rasterizer, which supports OpenGL 3.3+. Also set `MESA_GL_VERSION_OVERRIDE=3.3` and `MESA_GLSL_VERSION_OVERRIDE=330`. |
 
 To see the pre-configured RViz2 layout, check `launch/visualize.rviz`. It shows Grid, TF frames, the RobotModel, and the `/scene_markers` / `/spawned_objects` topics.
 

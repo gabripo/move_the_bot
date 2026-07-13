@@ -7,7 +7,7 @@ from std_msgs.msg import ColorRGBA
 class VirtualSceneNode(Node):
     def __init__(self):
         super().__init__("virtual_scene_node")
-        self.pub = self.create_publisher(MarkerArray, "/virtual_scene", 10)
+        self.pub = self.create_publisher(MarkerArray, "/visualization_marker_array", 10)
         self.timer = self.create_timer(1.0, self.publish_scene)
         self.get_logger().info("Virtual Scene Node started")
 

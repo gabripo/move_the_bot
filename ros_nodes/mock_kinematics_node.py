@@ -19,6 +19,11 @@ class MockKinematicsNode(Node):
         self.current_angles = self.initial_angles
         self.is_grasping = False
         self.get_logger().info("Mock Kinematics Node started")
+        # Publish joint state periodically so robot_state_publisher
+        # always has fresh data, even before any goal is received
+        self.create_timer(5.0, self._publish_joint_state)
+        # Publish immediately so transforms exist from startup
+        self._publish_joint_state()
 
     def reset_callback(self, msg):
         if msg.data != "reset":
@@ -40,6 +45,12 @@ class MockKinematicsNode(Node):
             0.05 if self.is_grasping else 0.0,
         ]
         self.joint_pub.publish(joint_state)
+        self.get_logger().info(
+            f"Joint state published: "
+            f"{math.degrees(self.current_angles[0]):.1f}° "
+            f"{math.degrees(self.current_angles[1]):.1f}° "
+            f"{math.degrees(self.current_angles[2]):.1f}°"
+        )
 
     def grasp_callback(self, msg):
         self.is_grasping = msg.data == "grasp"

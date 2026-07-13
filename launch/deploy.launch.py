@@ -7,6 +7,7 @@ def generate_launch_description():
         Node(package="mock_hmi_core", executable="mock_kinematics", output="screen"),
         Node(package="mock_hmi_core", executable="virtual_scene", output="screen"),
         Node(package="mock_hmi_core", executable="object_spawn", output="screen"),
+        Node(package="mock_hmi_core", executable="joint_state_to_markers", output="screen"),
         Node(
             package="rosbridge_server",
             executable="rosbridge_websocket",

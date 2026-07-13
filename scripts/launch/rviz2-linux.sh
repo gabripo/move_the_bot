@@ -33,4 +33,4 @@ docker compose -f "$COMPOSE_FILE" --profile ollama-agent run \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -v "$HOME/.Xauthority:/root/.Xauthority:ro" \
   ros2 \
-  ros2 launch mock_hmi_core visualize.launch.py
+  /rviz2.sh

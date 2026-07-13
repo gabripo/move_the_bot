@@ -25,6 +25,7 @@ setup(
             "mock_kinematics = ros_nodes.mock_kinematics_node:main",
             "virtual_scene = ros_nodes.virtual_scene_node:main",
             "object_spawn = ros_nodes.object_spawn_node:main",
+            "joint_state_to_markers = ros_nodes.joint_state_to_markers:main",
         ],
     },
 )

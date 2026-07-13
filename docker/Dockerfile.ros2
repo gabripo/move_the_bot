@@ -32,13 +32,24 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rosbridge-suite \
     ros-humble-robot-state-publisher \
     python3-pip \
+    mesa-utils \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    llvm-14 \
+    xvfb \
+    x11vnc \
+    openbox \
+    wmctrl \
+    xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install requests transforms3d
 
 COPY --from=builder /ros_ws /ros_ws
 COPY docker/ros_entrypoint.sh /
-RUN chmod +x /ros_entrypoint.sh
+COPY docker/rviz2.sh /
+COPY docker/rviz2_vnc.sh /
+RUN chmod +x /ros_entrypoint.sh /rviz2.sh /rviz2_vnc.sh
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["ros2", "launch", "mock_hmi_core", "deploy.launch.py"]
