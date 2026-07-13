@@ -6,13 +6,15 @@ source /ros_ws/install/setup.bash
 
 # Pull the LLM model via Ollama HTTP API
 # (ollama CLI launcher requires a TTY, so we use the API directly)
-echo "Pulling model llama3.2..."
+OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.2}"
+echo "Pulling model ${OLLAMA_MODEL}..."
 python3 -c "
 import requests, json, time
 url = '${OLLAMA_URL%/api/generate}/api/pull'
+model = '${OLLAMA_MODEL}'
 for attempt in range(30):
     try:
-        r = requests.post(url, json={'name': 'llama3.2'}, timeout=300, stream=True)
+        r = requests.post(url, json={'name': model}, timeout=300, stream=True)
         r.raise_for_status()
         for line in r.iter_lines():
             if line:

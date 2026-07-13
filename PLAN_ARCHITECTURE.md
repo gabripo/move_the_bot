@@ -180,7 +180,7 @@ The `agent-core` service runs a single Python ROS 2 node that bridges natural la
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | Ollama HTTP API endpoint |
-| `MODEL` (hardcoded) | `llama3.2` | Model name sent in the Ollama request |
+| `OLLAMA_MODEL` | `llama3.2` | Model tag (e.g. `llama3.2:3b-instruct-q4_K_M`, `llama3.1:8b`) |
 | `temperature` (hardcoded) | `0.1` | Low temperature for deterministic output |
 | `stream` | `false` | Non-streaming — waits for full JSON response |
 

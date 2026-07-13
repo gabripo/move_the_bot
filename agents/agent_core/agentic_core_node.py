@@ -8,7 +8,18 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import String
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434/api/generate")
-MODEL = "llama3.2"
+OLLAMA_MODEL = os.environ.get(
+    "OLLAMA_MODEL",
+    "llama3.2",
+)
+# Recommended models (light → capable):
+#   llama3.2:3b-instruct-q4_K_M  (fast, ~2 GB RAM)
+#   llama3.2:3b-instruct-fp16    (more accurate, ~6 GB RAM)
+#   llama3.2:3b                   (default, ~2 GB RAM)
+#   llama3.1:8b-instruct-q4_K_M  (larger, ~4.5 GB RAM)
+#   llama3.1:8b                   (~4.5 GB RAM, better reasoning)
+#   llama3:70b-instruct-q2_K     (max capability, needs ~35 GB RAM)
+# Model tag reference: https://ollama.com/library/llama3.2/tags
 BUILTIN_OBJECTS = {"apple", "mug", "bottle", "cube", "sphere", "table", "can", "cylinder"}
 # All positions are in Three.js frame: x=right, y=up, z=forward
 MIDDLE = (0.0, 0.25, 0.25)
@@ -122,7 +133,7 @@ class AgenticCoreNode(Node):
 
     def query_ollama(self, prompt):
         payload = {
-            "model": MODEL,
+            "model": OLLAMA_MODEL,
             "prompt": prompt,
             "system": SYSTEM_PROMPT,
             "stream": False,

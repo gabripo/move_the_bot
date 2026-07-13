@@ -134,6 +134,7 @@ The `deploy.launch.py` and `visualize.launch.py` ROS 2 launch files control whic
 | `SKETCHFAB_API_KEY` | _(unset)_ | all | API key for Sketchfab Download API. Enables fallback 3D model downloads for unknown objects. |
 | `OPENCLAW_FORWARDER_BACKEND` | `sdk` | openclaw-agent | `sdk` uses the Node.js openclaw-sdk bridge; `websocket` uses direct Python WebSocket to the Gateway. |
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | ollama-agent | Ollama API endpoint. Change to `http://host.docker.internal:11434/api/generate` to use a host-side Ollama. |
+| `OLLAMA_MODEL` | `llama3.2` | ollama-agent | Ollama model tag. Light→capable: `llama3.2:3b-instruct-q4_K_M`, `llama3.2:3b`, `llama3.1:8b-instruct-q4_K_M`, `llama3.1:8b`. Auto-pulled on startup. |
 | `ROS_DOMAIN_ID` | `42` | all | ROS 2 DDS domain ID. Change if multiple ROS 2 stacks run on the same network. |
 
 ## RViz2 Visualization
@@ -305,4 +306,5 @@ docker compose -f docker-compose.test.yml up --abort-on-container-exit --build
 | `SKETCHFAB_API_KEY` | _(unset)_ | API key for 3D model fallback downloads |
 | `OPENCLAW_FORWARDER_BACKEND` | `sdk` | `sdk` (Node.js bridge) or `websocket` (direct) |
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model tag (e.g. `llama3.2:3b-instruct-q4_K_M`, `llama3.1:8b`) |
 | `ROS_DOMAIN_ID` | `42` | ROS 2 DDS domain |
