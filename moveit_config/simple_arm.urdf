@@ -50,7 +50,7 @@
     <parent link="upper_arm_link"/><child link="forearm_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.25"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-2.5" upper="2.5" effort="1" velocity="1"/>
+    <limit lower="-2.0" upper="2.0" effort="1" velocity="1"/>
   </joint>
   <joint name="gripper_joint" type="prismatic">
     <parent link="forearm_link"/><child link="gripper_link"/>

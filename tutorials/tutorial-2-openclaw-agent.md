@@ -57,7 +57,7 @@ docker logs spatial_hmi_ros2 2>&1 | grep -E "\[INFO\].*started"
 
 | Node | Log line | Purpose |
 |------|----------|---------|
-| `mock_kinematics` | `[mock_kinematics_node]: Mock Kinematics Node started` | Subscribes `/target_goal`, computes IK, publishes `/joint_states` |
+| `mock_motion_planning` | `[mock_motion_planning_node]: Mock Motion Planning Node started` | Subscribes `/target_goal`, plans via MoveIt 2, publishes `/joint_states` |
 | `virtual_scene` | `[virtual_scene_node]: Virtual Scene Node started` | Publishes table/world markers on `/scene_markers` |
 | `object_spawn` | `[object_spawn_node]: Object Spawn Node started` | Subscribes `/object_spawn`, looks up models, publishes MarkerArray |
 | `rosbridge_websocket` | `[rosbridge_websocket]: Rosbridge WebSocket server started on port 9090` | WebSocket bridge for browser ↔ ROS 2 communication |

@@ -19,7 +19,7 @@ class RosbridgeClient {
     this.topics = {};
 
     this.topics["/target_goal"] = new ROSLIB.Topic({
-      ros: this.ros, name: "/target_goal", messageType: "geometry_msgs/Point",
+      ros: this.ros, name: "/target_goal", messageType: "geometry_msgs/PoseStamped",
     });
     this.topics["/target_goal"].advertise();
 
@@ -48,9 +48,19 @@ class RosbridgeClient {
   }
 
   publishPoint(topic, x, y, z) {
-    const t = this.topics[topic] || this.topics["/target_goal"];
+    const t = this.topics[topic];
     if (!t) return;
     t.publish(new ROSLIB.Message({ x, y, z }));
+  }
+
+  publishPose(topic, x, y, z, frameId = "base_link") {
+    const t = this.topics[topic];
+    if (!t) return;
+    const msg = {
+      header: { frame_id: frameId },
+      pose: { position: { x, y, z }, orientation: { x: 0, y: 0, z: 0, w: 1 } },
+    };
+    t.publish(new ROSLIB.Message(msg));
   }
 
   publishString(topic, data) {

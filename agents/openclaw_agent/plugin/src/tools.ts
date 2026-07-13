@@ -14,7 +14,7 @@ export function registerTools(tool: any) {
       },
       async execute({ x, y, z }: { x: number; y: number; z: number }) {
         const bridge = getRosbridgeClient();
-        bridge.publishPoint("/target_goal", x, y, z);
+        bridge.publishPose("/target_goal", x, y, z);
         return `Moving arm to (${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})`;
       },
     }),

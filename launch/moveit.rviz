@@ -26,15 +26,6 @@ Visualization Manager:
         Trajectory Slider: 0.0
         Display Path: true
       Value: true
-  Tools:
-    - Class: rviz_default_plugins/Interact
-      Name: Interact
-    - Class: rviz_default_plugins/Select
-      Name: Select
-    - Class: rviz_default_plugins/SetInitialPose
-      Name: 2D Pose Estimate
-    - Class: rviz_default_plugins/SetGoal
-      Name: 2D Nav Goal
   Global Options:
     Fixed Frame: base_link
     Frame Rate: 30

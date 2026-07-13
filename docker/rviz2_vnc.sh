@@ -62,16 +62,15 @@ echo ""
 ros2 launch mock_hmi_core visualize.launch.py &
 LAUNCH_PID=$!
 
-# Wait for rviz node, then inject robot_description (with retries)
-RD=$(cat /ros_ws/src/mock_hmi_core/urdf/simple_arm.urdf)
-for i in 1 2 3 4 5; do
-  if ros2 param set /rviz robot_description "$RD" 2>/dev/null; then
-    echo "robot_description set on /rviz"
-    break
-  fi
-  echo "Waiting for /rviz node... (attempt $i)"
-  sleep 2
-done
+# Wait for rviz node, then publish URDF/SRDF on topics the MotionPlanning plugin subscribes to
+# (rviz2 in Humble does not declare robot_description as a parameter, so ros2 param set
+#  silently fails. Instead we publish on /robot_description and /robot_description_semantic,
+#  which the plugin falls back to after failing to read the parameter.)
+URDF=$(cat /ros_ws/src/mock_hmi_core/urdf/simple_arm.urdf)
+SRDF=$(cat /ros_ws/src/mock_hmi_core/urdf/simple_arm.srdf)
+sleep 4
+timeout 12 ros2 topic pub /robot_description std_msgs/String "data: '${URDF}'" --rate 0.5 2>/dev/null &
+timeout 12 ros2 topic pub /robot_description_semantic std_msgs/String "data: '${SRDF}'" --rate 0.5 2>/dev/null &
 
 # Maximise the rviz2 window
 sleep 1

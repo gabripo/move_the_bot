@@ -1,0 +1,19 @@
+planner_configs:
+  RRTConnect:
+    type: geometric::RRTConnect
+  RRTstar:
+    type: geometric::RRTstar
+  PRM:
+    type: geometric::PRM
+  EST:
+    type: geometric::EST
+  BKPIECE:
+    type: geometric::BKPIECE
+
+arm_with_gripper:
+  planner_configs:
+    - RRTConnect
+    - RRTstar
+    - PRM
+    - EST
+    - BKPIECE

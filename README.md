@@ -92,7 +92,7 @@ The system supports three Docker Compose profiles, each starting a different set
 | Service | `ollama-agent` | `openclaw-agent` | `all` | Description |
 |---------|:---:|:---:|:---:|-------------|
 | `ollama` | ✓ | ✓ | ✓ | LLM server with llama3.2. Pulls model on first start. |
-| `ros2` | ✓ | ✓ | ✓ | ROS 2 Humble container. Runs all actuation nodes: `mock_kinematics_node` (IK solver), `virtual_scene_node` (table/world markers), `object_spawn_node` (3D model spawner), `rosbridge_websocket` (WebSocket API on :9090), `robot_state_publisher` (URDF). |
+| `ros2` | ✓ | ✓ | ✓ | ROS 2 Humble container. Runs all actuation nodes: `mock_motion_planning_node` (MoveIt 2 motion planning), `virtual_scene_node` (table/world markers), `object_spawn_node` (3D model spawner), `move_group` (MoveIt 2 planning service), `rosbridge_websocket` (WebSocket API on :9090), `robot_state_publisher` (URDF). |
 | `web` | ✓ | ✓ | ✓ | nginx:alpine serving the frontend at :80. Reverse-proxies `/ws/` → ros2:9090 for WebSocket, `/stt/` → stt:8000 for speech-to-text. |
 | `stt` | ✓ | ✓ | ✓ | **Speech-to-text service.** Runs OpenAI Whisper tiny model in a FastAPI server. Accepts audio uploads at POST `/transcribe`, returns transcribed text. Used as fallback for Firefox (which lacks native `SpeechRecognition`). |
 | `agent-core` | ✓ | — | ✓ | **Ollama direct agent.** A Python ROS 2 node that subscribes to `/spatial_coords` and `/voice_commands`, builds a prompt, queries Ollama's HTTP API, parses the JSON response, and publishes to `/target_goal`, `/grasp_command`, or `/object_spawn`. Uses a rule-based keyword parser as a fast-path, with Ollama fallback. See [Ollama Agent Internals](PLAN_ARCHITECTURE.md#ollama-agent-internals-agentic_core_nodepy) in `PLAN_ARCHITECTURE.md`. Minimal dependencies — single container, no extra framework. |
@@ -124,8 +124,10 @@ The `deploy.launch.py` and `visualize.launch.py` ROS 2 launch files control whic
 
 | Launch File | Nodes | When to Use |
 |-------------|-------|-------------|
-| `deploy.launch.py` | mock_kinematics, virtual_scene, object_spawn, rosbridge_websocket, robot_state_publisher | Default. Headless deployment (no GUI). Used by `docker-compose.yml`. |
-| `visualize.launch.py` | Same as above + **rviz2** | Development. Opens RViz2 for 3D visualization of the arm and scene. Requires X11 forwarding. |
+| `deploy.launch.py` | mock_motion_planning, move_group, virtual_scene, object_spawn, rosbridge_websocket, robot_state_publisher | Default. Headless deployment (no GUI). Used by `docker-compose.yml`. |
+| `visualize.launch.py` | Same as above + **rviz2** (MotionPlanning plugin) | Development. Opens RViz2 for 3D visualization of the arm, planned trajectories, and planning scene. Requires X11 forwarding. |
+| `move_group.launch.py` | robot_state_publisher + **move_group** | Starts the MoveIt 2 planning service standalone. |
+| `moveit_rviz.launch.py` | move_group + **mock_motion_planning** + **rviz2** (MotionPlanning plugin) | MoveIt 2 planning with RViz2 visualization of planned paths and the planning scene. |
 
 ### Environment Variables
 
@@ -136,6 +138,10 @@ The `deploy.launch.py` and `visualize.launch.py` ROS 2 launch files control whic
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | ollama-agent | Ollama API endpoint. Change to `http://host.docker.internal:11434/api/generate` to use a host-side Ollama. |
 | `OLLAMA_MODEL` | `llama3.2` | ollama-agent | Ollama model tag. Light→capable: `llama3.2:3b-instruct-q4_K_M`, `llama3.2:3b`, `llama3.1:8b-instruct-q4_K_M`, `llama3.1:8b`. Auto-pulled on startup. |
 | `ROS_DOMAIN_ID` | `42` | all | ROS 2 DDS domain ID. Change if multiple ROS 2 stacks run on the same network. |
+
+## MoveIt 2 Motion Planning
+
+The system includes a `mock_motion_planning_node` that uses MoveIt 2's `MoveGroupCommander` to compute Cartesian or joint-space plans from a `/target_goal` (PoseStamped) and replays them on `/joint_states`. The `moveit_rviz.launch.py` launches `move_group`, the planning node, and RViz2 with the MoveIt MotionPlanning plugin for trajectory and planning-scene visualization. See [docs/moveit-planning.md](docs/moveit-planning.md).
 
 ## RViz2 Visualization
 
@@ -154,6 +160,7 @@ See `PLAN_ARCHITECTURE.md` for full architecture documentation.
 | `PLAN_PROMPTS.md` | All LLM prompts and skill definitions |
 | `PLAN_TEST_STRATEGY.md` | Test plan and coverage |
 | `docs/rviz2-visualization.md` | RViz2 setup for macOS / Linux / Windows |
+| `docs/moveit-planning.md` | MoveIt 2 motion planning integration |
 
 ## Development
 

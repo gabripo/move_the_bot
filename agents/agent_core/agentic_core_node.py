@@ -4,8 +4,8 @@ import re
 import requests
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Point
-from std_msgs.msg import String
+from geometry_msgs.msg import Point, PoseStamped
+from std_msgs.msg import Header, String
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434/api/generate")
 OLLAMA_MODEL = os.environ.get(
@@ -117,7 +117,7 @@ def parse_voice_command(text, spawned_objects=None):
 class AgenticCoreNode(Node):
     def __init__(self):
         super().__init__("agentic_core_node")
-        self.point_pub = self.create_publisher(Point, "/target_goal", 10)
+        self.goal_pub = self.create_publisher(PoseStamped, "/target_goal", 10)
         self.grasp_pub = self.create_publisher(String, "/grasp_command", 10)
         self.spawn_pub = self.create_publisher(String, "/object_spawn", 10)
         self.log_pub = self.create_publisher(String, "/agent_log", 10)
@@ -223,11 +223,15 @@ class AgenticCoreNode(Node):
                 ty = float(target.get("y", MIDDLE[1]))
                 tz = float(target.get("z", MIDDLE[2]))
                 ik_x, ik_y, ik_z = threejs_to_ik(tx, ty, tz)
-                msg = Point()
-                msg.x = ik_x
-                msg.y = ik_y
-                msg.z = ik_z
-                self.point_pub.publish(msg)
+                msg = PoseStamped()
+                msg.header = Header()
+                msg.header.stamp = self.get_clock().now().to_msg()
+                msg.header.frame_id = "base_link"
+                msg.pose.position.x = ik_x
+                msg.pose.position.y = ik_y
+                msg.pose.position.z = ik_z
+                msg.pose.orientation.w = 1.0
+                self.goal_pub.publish(msg)
                 self._log(f"Action: move_to Three.js ({tx:.3f}, {ty:.3f}, {tz:.3f}) → IK ({ik_x:.3f}, {ik_y:.3f}, {ik_z:.3f})")
             except (TypeError, ValueError) as e:
                 self._log(f"Action: bad move_to target → {e}")

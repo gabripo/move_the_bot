@@ -53,6 +53,21 @@ export class RosbridgeClient {
     );
   }
 
+  publishPose(topic: string, x: number, y: number, z: number, frameId = "base_link"): void {
+    if (!this.ws) return;
+    this.ws.send(
+      JSON.stringify({
+        op: "publish",
+        topic,
+        msg: {
+          header: { frame_id: frameId },
+          pose: { position: { x, y, z }, orientation: { x: 0, y: 0, z: 0, w: 1 } },
+        },
+        id: `pub_${++this.msgId}`,
+      })
+    );
+  }
+
   close(): void {
     this.ws?.close();
   }

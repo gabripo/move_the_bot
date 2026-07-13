@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot name="simple_arm">
+  <group name="arm_with_gripper">
+    <joint name="base_joint"/>
+    <joint name="shoulder_joint"/>
+    <joint name="elbow_joint"/>
+    <joint name="gripper_joint"/>
+  </group>
+  <group name="gripper">
+    <joint name="gripper_joint"/>
+  </group>
+  <end_effector name="gripper_ee" parent_link="forearm_link" parent_group="arm_with_gripper" group="gripper"/>
+  <disable_default_collisions/>
+</robot>

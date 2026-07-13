@@ -14,7 +14,7 @@ docker compose -f ../docker/docker-compose.yml --profile ollama-agent up --build
 
 First build takes ~5 minutes. After startup, you'll see:
 - `ollama` downloading `llama3.2` (3B) on first run
-- `ros2` starting all ROS 2 nodes: IK solver, virtual scene, object spawner, rosbridge
+- `ros2` starting all ROS 2 nodes: MoveIt motion planner, virtual scene, object spawner, rosbridge
 - `agent-core` connecting to ROS 2 topics
 
 ## Step 2 — Verify it's running
@@ -28,7 +28,7 @@ Expect these 5 services with `Up` status:
 | Container | Status indicator | Purpose |
 |-----------|-----------------|---------|
 | `spatial_hmi_ollama` | `Up` (healthy) | LLM server with llama3.2. Must show `(healthy)` after the pull completes. |
-| `spatial_hmi_ros2` | `Up` | ROS 2 Humble with all actuation nodes: IK solver, virtual scene, object spawner, rosbridge, robot_state_publisher |
+| `spatial_hmi_ros2` | `Up` | ROS 2 Humble with all actuation nodes: MoveIt motion planner, virtual scene, object spawner, rosbridge, robot_state_publisher |
 | `spatial_hmi_web` | `Up` | nginx serving the frontend at http://localhost:80 |
 | `spatial_hmi_stt` | `Up` | Whisper tiny speech-to-text server for Firefox fallback |
 | `spatial_hmi_agent_core` | `Up` | Python agent node subscribing to `/spatial_coords` and `/voice_commands` |
@@ -47,7 +47,7 @@ Expected output:
 
 | Node | Log line | Purpose |
 |------|----------|---------|
-| `mock_kinematics` | `[mock_kinematics_node]: Mock Kinematics Node started` | Subscribes `/target_goal`, computes IK, publishes `/joint_states` |
+| `mock_motion_planning` | `[mock_motion_planning_node]: Mock Motion Planning Node started` | Subscribes `/target_goal`, plans via MoveIt 2, publishes `/joint_states` |
 | `virtual_scene` | `[virtual_scene_node]: Virtual Scene Node started` | Publishes table/world markers on `/scene_markers` |
 | `object_spawn` | `[object_spawn_node]: Object Spawn Node started` | Subscribes `/object_spawn`, looks up models, publishes MarkerArray |
 | `rosbridge_websocket` | `[rosbridge_websocket]: Rosbridge WebSocket server started on port 9090` | WebSocket bridge for browser ↔ ROS 2 communication |

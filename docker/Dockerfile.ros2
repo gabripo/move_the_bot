@@ -16,9 +16,10 @@ COPY ros_nodes/ src/mock_hmi_core/ros_nodes/
 COPY models/ src/mock_hmi_core/models/
 COPY agents/agent_core/agentic_core_node.py src/mock_hmi_core/mock_hmi_core/
 
-# Copy launch files, URDF, and rviz config
+# Copy launch files, URDF, rviz config, and MoveIt configs
 COPY launch/ src/mock_hmi_core/launch/
 COPY urdf/ src/mock_hmi_core/urdf/
+COPY moveit_config/ src/mock_hmi_core/moveit_config/
 
 # Create __init__.py for the main Python package
 RUN touch src/mock_hmi_core/mock_hmi_core/__init__.py
@@ -31,6 +32,8 @@ FROM osrf/ros:humble-desktop
 RUN apt-get update && apt-get install -y \
     ros-humble-rosbridge-suite \
     ros-humble-robot-state-publisher \
+    ros-humble-moveit \
+    ros-humble-moveit-configs-utils \
     python3-pip \
     mesa-utils \
     libgl1-mesa-glx \
@@ -43,9 +46,18 @@ RUN apt-get update && apt-get install -y \
     xdotool \
     && rm -rf /var/lib/apt/lists/*
 
+# Remove CHOMP planner (its goal validator rejects position-space constraints,
+# which conflicts with our PositionConstraint-based motion requests)
+RUN apt-get update && apt-get remove -y \
+    ros-humble-moveit-planners-chomp \
+    ros-humble-moveit-chomp-optimizer-adapter \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip3 install requests transforms3d
 
 COPY --from=builder /ros_ws /ros_ws
+# Symlink config -> moveit_config so MoveItConfigsBuilder finds its files
+RUN ln -sfn moveit_config /ros_ws/install/mock_hmi_core/share/mock_hmi_core/config
 COPY docker/ros_entrypoint.sh /
 COPY docker/rviz2.sh /
 COPY docker/rviz2_vnc.sh /

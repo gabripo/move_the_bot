@@ -16,16 +16,17 @@ setup(
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "launch"), glob("launch/*.rviz")),
         (os.path.join("share", package_name, "urdf"), glob("urdf/*")),
+        (os.path.join("share", package_name, "moveit_config"), glob("moveit_config/*")),
     ],
     install_requires=["setuptools", "requests", "transforms3d"],
     zip_safe=True,
     entry_points={
         "console_scripts": [
             "agentic_core = mock_hmi_core.agentic_core_node:main",
-            "mock_kinematics = ros_nodes.mock_kinematics_node:main",
             "virtual_scene = ros_nodes.virtual_scene_node:main",
             "object_spawn = ros_nodes.object_spawn_node:main",
             "joint_state_to_markers = ros_nodes.joint_state_to_markers:main",
+            "mock_motion_planning = ros_nodes.mock_motion_planning_node:main",
         ],
     },
 )
