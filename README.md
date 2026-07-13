@@ -7,7 +7,7 @@ AI-powered spatial human-machine interface: control a simulated robotic arm usin
 ### Prerequisites
 - Docker Desktop 24+ with Docker Compose v2+
 - 4 GB RAM minimum
-- [Ollama](https://ollama.ai) installed locally with `llama3.2` model: `ollama pull llama3.2`
+- Ollama runs inside Docker (the included `ollama` service) — no local install needed
 
 ### Tutorials
 
