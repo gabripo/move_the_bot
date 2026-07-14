@@ -16,10 +16,28 @@ class ObjectSpawnNode(Node):
     def __init__(self):
         super().__init__("object_spawn_node")
         self.sub = self.create_subscription(String, "/object_spawn", self.on_spawn, 10)
+        self.reset_sub = self.create_subscription(String, "/reset_command", self.reset_callback, 10)
         self.marker_pub = self.create_publisher(MarkerArray, "/visualization_marker_array", 10)
         self.spawned_ids = {}
         self.next_id = 1
         self.get_logger().info("Object Spawn Node started")
+
+    def reset_callback(self, msg: String):
+        if msg.data != "reset":
+            return
+        self.get_logger().info("Clearing spawned objects")
+        array = MarkerArray()
+        for name, obj_id in list(self.spawned_ids.items()):
+            marker = Marker()
+            marker.header.frame_id = "base_link"
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "spawned_objects"
+            marker.id = obj_id
+            marker.action = Marker.DELETE
+            array.markers.append(marker)
+        self.spawned_ids.clear()
+        if array.markers:
+            self.marker_pub.publish(array)
 
     def on_spawn(self, msg):
         try:

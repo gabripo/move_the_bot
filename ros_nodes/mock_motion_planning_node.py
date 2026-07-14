@@ -122,11 +122,11 @@ class MockMotionPlanningNode(Node):
     def grasp_callback(self, msg: String):
         if msg.data == "grasp":
             self.current_positions[3] = 0.05
-            self.get_logger().info("Gripper opened (grasp)")
+            self.get_logger().info("Gripper closed (grasp)")
             self.publish_current_state()
         elif msg.data == "release":
             self.current_positions[3] = 0.0
-            self.get_logger().info("Gripper closed (release)")
+            self.get_logger().info("Gripper opened (release)")
             self.publish_current_state()
 
     def publish_current_state(self):
