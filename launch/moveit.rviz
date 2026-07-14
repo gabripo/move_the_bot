@@ -11,17 +11,20 @@ Visualization Manager:
     - Class: rviz_default_plugins/TF
       Name: TF
       Value: true
-    - Class: rviz_default_plugins/RobotModel
-      Name: RobotModel
+    - Class: moveit_rviz_plugin/MotionPlanning
+      Name: MotionPlanning
+      Planning Scene Topic: /planning_scene
       Robot Description: robot_description
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Name: SceneMarkers
-      Marker Topic: /visualization_marker_array
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Name: SpawnedObjects
-      Marker Topic: /visualization_marker_array
+      Planning Request:
+        Planning Group: arm_with_gripper
+        Planner: RRTConnect
+        Start State: current
+        Query Goal State: true
+      Planned Path:
+        Trajectory Topic: /move_group/display_planned_path
+        State Display Time: 0.05
+        Trajectory Slider: 0.0
+        Display Path: true
       Value: true
   Tools:
     - Class: rviz_default_plugins/Interact
