@@ -45,10 +45,10 @@ services:
       - model_cache:/models/cache
       # Dev bind mounts — enable for faster iteration (no rebuild needed):
       # Uncomment these and re-run `docker compose up -d` (no --build):
-      - ../ros_nodes:/ros_ws/src/mock_hmi_core/ros_nodes
-      - ../launch:/ros_ws/src/mock_hmi_core/launch
-      - ../urdf:/ros_ws/src/mock_hmi_core/urdf
-      - ../moveit_config:/ros_ws/src/mock_hmi_core/moveit_config
+      # - ../ros_nodes:/ros_ws/src/mock_hmi_core/ros_nodes
+      # - ../launch:/ros_ws/src/mock_hmi_core/launch
+      # - ../urdf:/ros_ws/src/mock_hmi_core/urdf
+      # - ../moveit_config:/ros_ws/src/mock_hmi_core/moveit_config
       # After editing, run:
       #   docker compose exec ros2 bash -c "source install/setup.bash && colcon build --packages-select mock_hmi_core --symlink-install"
       # Then restart: docker compose restart ros2

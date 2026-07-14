@@ -245,3 +245,53 @@ Use the **MotionPlanning** panel in RViz2 to:
 - A `config → moveit_config` symlink is created at build time in the package share directory so `MoveItConfigsBuilder`'s default `config/` lookup resolves correctly.
 - The `moveit_rviz.launch.py` includes `move_group.launch.py`, so both `robot_state_publisher` and `move_group` are started automatically. Do not also launch `deploy.launch.py` or `visualize.launch.py` alongside it (duplicate RSP instances).
 - Masses and inertias are **not required** — MoveIt is kinematic-only. It solves geometric planning problems without physics simulation.
+
+## Development Workflow
+
+For faster iteration without full image rebuilds, the Docker Compose file includes commented-out bind mounts for the source directories. This is intended for **development environments only** — production deployments should always build the image.
+
+### Setup
+
+In `docker/docker-compose.yml`, uncomment the four `volumes` entries under the `ros2` service:
+
+```yaml
+volumes:
+  - model_cache:/models/cache
+  - ../ros_nodes:/ros_ws/src/mock_hmi_core/ros_nodes
+  - ../launch:/ros_ws/src/mock_hmi_core/launch
+  - ../urdf:/ros_ws/src/mock_hmi_core/urdf
+  - ../moveit_config:/ros_ws/src/mock_hmi_core/moveit_config
+```
+
+Then start the stack without rebuilding:
+
+```bash
+docker compose -f docker/docker-compose.yml --profile ollama-agent up -d
+```
+
+### Iteration Loop
+
+1. **Edit a file** on your host (e.g., `ros_nodes/mock_motion_planning_node.py`)
+2. **Rebuild the package** (needed for launch/config/URDF changes; optional for Python-only changes since `--symlink-install` follows symlinks into the mounted source):
+
+   ```bash
+   docker compose exec ros2 bash -c "source install/setup.bash && colcon build --packages-select mock_hmi_core --symlink-install"
+   ```
+
+3. **Restart the container** to pick up the updated entry points:
+
+   ```bash
+   docker compose restart ros2
+   ```
+
+### What requires a full rebuild
+
+| Change | Dev mount workflow | Full rebuild required? |
+|--------|-------------------|----------------------|
+| Python node logic | Mount + `colcon build` + restart | No |
+| Launch files | Mount + `colcon build` + restart | No |
+| URDF/SRDF | Mount + `colcon build` + restart | No |
+| MoveIt config YAMLs | Mount + `colcon build` + restart  | No |
+| Dockerfile (new apt packages) | — | Yes |
+| `setup.py` (new entry points) | — | Yes |
+| `package.xml` (new deps) | — | Yes |
