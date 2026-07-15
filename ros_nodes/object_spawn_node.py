@@ -80,9 +80,10 @@ class ObjectSpawnNode(Node):
                 return
             model_path, source = result
 
+        scale = 0.15 if source in ("sketchfab", "cache") else 1.0
         web_path = self._to_web_path(model_path) if model_path else ""
         notify = String()
-        notify.data = json.dumps({"name": name, "path": web_path, "x": x, "y": y, "z": z})
+        notify.data = json.dumps({"name": name, "path": web_path, "x": x, "y": y, "z": z, "scale": scale})
         self.notify_pub.publish(notify)
 
         self.spawned_ids[name] = self.spawned_ids.get(name, self.next_id)
@@ -101,9 +102,9 @@ class ObjectSpawnNode(Node):
         marker.mesh_use_embedded_materials = True
         marker.pose.position = Point(x=ik_x, y=ik_y, z=ik_z)
         marker.pose.orientation.w = 1.0
-        marker.scale.x = 1.0
-        marker.scale.y = 1.0
-        marker.scale.z = 1.0
+        marker.scale.x = scale
+        marker.scale.y = scale
+        marker.scale.z = scale
         marker.color.a = 1.0
         marker.color.r = 1.0
         marker.color.g = 1.0

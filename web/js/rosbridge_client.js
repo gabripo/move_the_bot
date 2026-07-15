@@ -144,7 +144,7 @@ class RosbridgeClient {
       try {
         const data = JSON.parse(msg.data);
         if (this.viewer && data.name && data.x !== undefined) {
-          this.viewer.spawnObject(data.name, data.path || "", data.x, data.y, data.z);
+          this.viewer.spawnObject(data.name, data.path || "", data.x, data.y, data.z, data.scale || 1);
         }
       } catch (e) {
         this.addLogEntry(`Spawn notify error: ${e.message}`);
@@ -162,7 +162,7 @@ class RosbridgeClient {
       try {
         const data = JSON.parse(msg.data);
         if (this.viewer && data.name && data.x !== undefined) {
-          this.viewer.spawnObject(data.name, data.path || "", data.x, data.y, data.z);
+          this.viewer.spawnObject(data.name, data.path || "", data.x, data.y, data.z, data.scale || 1);
         }
         if (data.path) {
           this.addLogEntry(`Spawned: ${data.name} at (${data.x}, ${data.y}, ${data.z})`);

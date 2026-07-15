@@ -197,7 +197,7 @@ class RobotViewer {
     return spr;
   }
 
-  spawnObject(name, modelPath, x, y, z) {
+  spawnObject(name, modelPath, x, y, z, scale) {
     for (let i = this.sceneObjects.length - 1; i >= 0; i--) {
       if (this.sceneObjects[i].name === name) {
         this.scene.remove(this.sceneObjects[i].mesh);
@@ -211,7 +211,7 @@ class RobotViewer {
     const modelUrl = modelPath || this._resolveModelUrl(name);
 
     if (modelUrl) {
-      this._addModel(name, modelUrl, x, y, z, label);
+      this._addModel(name, modelUrl, x, y, z, label, scale);
     } else {
       const mesh = this._makeSphere(x, y, z);
       this.scene.add(mesh);
@@ -235,9 +235,9 @@ class RobotViewer {
     return filename ? `/models/builtin/${filename}` : null;
   }
 
-  _addModel(name, url, x, y, z, label) {
+  _addModel(name, url, x, y, z, label, scale) {
     if (this.modelCache.has(url)) {
-      this._instantiateModel(name, url, x, y, z, label);
+      this._instantiateModel(name, url, x, y, z, label, scale);
       return;
     }
 
@@ -247,11 +247,12 @@ class RobotViewer {
     const entry = { mesh: fallback, label, name };
     this.sceneObjects.push(entry);
 
+    const s = scale || 1.0;
     this.loader.load(url, (gltf) => {
       this.modelCache.set(url, gltf.scene);
       const clone = gltf.scene.clone();
       clone.position.set(x, y, z);
-      clone.scale.setScalar(1.0);
+      clone.scale.setScalar(s);
       this.scene.remove(entry.mesh);
       this.scene.add(clone);
       entry.mesh = clone;
@@ -260,11 +261,11 @@ class RobotViewer {
     });
   }
 
-  _instantiateModel(name, url, x, y, z, label) {
+  _instantiateModel(name, url, x, y, z, label, scale) {
     const cached = this.modelCache.get(url);
     const clone = cached.clone();
     clone.position.set(x, y, z);
-    clone.scale.setScalar(1.0);
+    clone.scale.setScalar(scale || 1.0);
     this.scene.add(clone);
     this.scene.add(label);
     this.sceneObjects.push({ mesh: clone, label, name });
