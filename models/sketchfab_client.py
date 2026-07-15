@@ -48,10 +48,15 @@ def download_model(object_name: str, api_key: str, cache_dir: Path):
             continue
 
         try:
-            model_resp = requests.get(glb_url, timeout=30)
-            model_resp.raise_for_status()
-            with open(local_path, "wb") as f:
-                f.write(model_resp.content)
+            with requests.get(glb_url, stream=True, timeout=30) as model_resp:
+                model_resp.raise_for_status()
+                content_length = int(model_resp.headers.get("content-length", 0))
+                if content_length > 5 * 1024 * 1024:
+                    print(f"Skipping {uid}: {content_length} bytes exceeds 5 MB limit")
+                    continue
+                with open(local_path, "wb") as f:
+                    for chunk in model_resp.iter_content(chunk_size=8192):
+                        f.write(chunk)
             return str(local_path)
         except requests.RequestException:
             continue
