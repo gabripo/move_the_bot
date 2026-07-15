@@ -35,21 +35,29 @@ BREAKDOWN_PROMPT = (
     "Each simple command must describe exactly one action (spawn, move_to, grasp, release, none). "
     'Use "and", "then", commas as split points. '
     "Repeat any missing verbs so each command is self-contained. "
-    "You MUST return a JSON array of plain text strings."
+    "Keep positional phrases (e.g. 'at its left', 'to the right', 'at center') attached to the sub-command they belong to. "
+    "Do NOT generate extra move_to commands that were not explicitly said."
+    " You MUST return a JSON array of plain text strings."
     " Never return JSON objects or dicts. Only a flat array of strings."
     "\nExamples:\n"
     '  "move to the apple, then to the bottle"\n'
     '    -> ["move to the apple", "move to the bottle"]\n'
     '  "create an apple and a mug"\n'
     '    -> ["create an apple", "create a mug"]\n'
+    '  "create an apple and a bottle at its left"\n'
+    '    -> ["create an apple", "create a bottle at its left"]\n'
     '  "grasp the bottle"\n'
-    '    -> ["move to the bottle", "grasp"]'
+    '    -> ["grasp"]\n'
+    '  "spawn a bottle and move it to the right"\n'
+    '    -> ["spawn a bottle", "move it to the right"]'
 )
 
 POSITIONAL_QUALIFIERS = {
     "left of": "left",
     "to the left": "left",
     "on the left": "left",
+    "at its left": "left",
+    "to its left": "left",
     "right of": "right",
     "to the right": "right",
     "on the right": "right",

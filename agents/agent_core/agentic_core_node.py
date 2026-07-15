@@ -161,47 +161,44 @@ class AgenticCoreNode(Node):
         self.get_logger().info(message)
 
     @staticmethod
-    def _dict_to_string(d):
-        act = d.get("action", "")
-        if act == "spawn":
-            return f"create {d.get('object', 'object')}"
-        if act == "move_to":
-            return "move"
-        if act == "grasp":
-            return "grasp"
-        if act == "release":
-            return "release"
-        return ""
+    def _split_commands(voice):
+        """Split a multi-step command into individual sub-command strings.
 
-    def _breakdown_command(self, voice):
-        self._log("LLM: breaking down command")
-        response = self.query_ollama(
-            f'Voice: "{voice}"\nJSON:', system=BREAKDOWN_PROMPT
-        )
-        if response is None:
-            return [voice]
-        try:
-            parts = json.loads(response.strip())
-            if isinstance(parts, list) and len(parts) > 0:
-                if all(isinstance(s, str) for s in parts):
-                    return parts
-                if all(isinstance(d, dict) for d in parts):
-                    strings = [self._dict_to_string(d) for d in parts if self._dict_to_string(d)]
-                    return strings if strings else [voice]
-            if isinstance(parts, dict) and len(parts) > 0:
-                for val in parts.values():
-                    if isinstance(val, list) and len(val) > 0:
-                        if all(isinstance(s, str) for s in val):
-                            return val
-                        if all(isinstance(d, dict) for d in val):
-                            strings = [self._dict_to_string(d) for d in val if self._dict_to_string(d)]
-                            return strings if strings else [voice]
-                return list(parts.keys())
-            self._log(f"LLM: unexpected breakdown format → {response}")
-            return [voice]
-        except (json.JSONDecodeError, TypeError):
-            self._log(f"LLM: failed to parse breakdown → {response}")
-            return [voice]
+        Splits on ', then ' and ' and ', then prepends missing verbs.
+        """
+        spawn_verbs = ["create", "spawn", "place", "make", "add", "put", "set", "introduce"]
+        move_verbs = ["move", "go", "teleport", "position"]
+
+        def prepend_verb(parts, first_part):
+            verb = None
+            ft = first_part.lower().strip()
+            for kw in spawn_verbs + move_verbs:
+                if ft.startswith(kw):
+                    verb = kw
+                    break
+            if verb:
+                for i in range(1, len(parts)):
+                    pt = parts[i].lower().strip()
+                    has_verb = any(pt.startswith(kw) for kw in spawn_verbs + move_verbs)
+                    if not has_verb:
+                        parts[i] = f"{verb} {parts[i]}"
+            return parts
+
+        t = voice.strip()
+        parts = re.split(r",\s*then\s+", t, flags=re.IGNORECASE)
+        parts = [p.strip() for p in parts if p.strip()]
+        result = []
+        for part in parts:
+            and_parts = re.split(r"\s+and\s+", part, flags=re.IGNORECASE)
+            and_parts = [p.strip() for p in and_parts if p.strip()]
+            and_parts = prepend_verb(and_parts, and_parts[0])
+            result.extend(and_parts)
+        return result if result else [voice]
+
+    def _split_and_log(self, voice):
+        sub_commands = self._split_commands(voice)
+        self._log(f"Sub-commands: {sub_commands}")
+        return sub_commands
 
     def _query_llm_for_action(self, cmd):
         pos = self.current_pos or Point(x=0.0, y=0.3, z=0.15)
@@ -234,8 +231,7 @@ class AgenticCoreNode(Node):
 
         self._log(f"Voice: {voice}")
 
-        sub_commands = self._breakdown_command(voice)
-        self._log(f"Sub-commands: {sub_commands}")
+        sub_commands = self._split_and_log(voice)
 
         actions = []
         for cmd in sub_commands:
