@@ -3,6 +3,8 @@ class RobotViewer {
     this.container = document.getElementById(containerId);
     this.sceneObjects = [];
     this.modelCache = new Map();
+    this.markers = new Map();
+    this.markerReceivedAt = new Map();
     this.setupScene();
     this.buildArm();
     this.animate();
@@ -282,12 +284,144 @@ class RobotViewer {
     return mesh;
   }
 
+  updateMarkers(markers) {
+    for (const m of markers) {
+      // Skip arm markers — the scene-graph arm already visualizes links
+      if (m.ns === "arm_links" || m.ns === "arm" || m.ns === "arm_joints") continue;
+      if (m.action === 2) {
+        this._removeNamespace(m.ns);
+        continue;
+      }
+      if (m.action === 1) {
+        this._removeMarker(m.ns, m.id);
+        continue;
+      }
+      if (m.action !== 0) continue;
+
+      this._removeMarker(m.ns, m.id);
+
+      const [tx, ty, tz] = ik_to_threejs(m.pose.position.x, m.pose.position.y, m.pose.position.z);
+      const key = `${m.ns}:${m.id}`;
+      const color = new THREE.Color(m.color.r, m.color.g, m.color.b);
+      // Convert ROS quaternion (x,y,z,w) → Three.js (y,z,x,w) to match ik_to_threejs axis permutation
+      const qx = m.pose.orientation.y;
+      const qy = m.pose.orientation.z;
+      const qz = m.pose.orientation.x;
+      const qw = m.pose.orientation.w;
+      // Convert ROS scale (sx,sy,sz) → Three.js (sy,sz,sx)
+      const sx = m.scale.y, sy = m.scale.z, sz = m.scale.x;
+      let obj = null;
+
+      switch (m.type) {
+        case 1: {
+          const g = new THREE.BoxGeometry(sx, sy, sz);
+          const mat = new THREE.MeshStandardMaterial({ color, transparent: m.color.a < 1, opacity: m.color.a });
+          obj = new THREE.Mesh(g, mat);
+          obj.position.set(tx, ty, tz);
+          obj.quaternion.set(qx, qy, qz, qw);
+          break;
+        }
+        case 2: {
+          const radius = Math.max(sx, sy, sz) / 2;
+          const g = new THREE.SphereGeometry(radius, 16, 16);
+          const mat = new THREE.MeshStandardMaterial({ color, transparent: m.color.a < 1, opacity: m.color.a });
+          obj = new THREE.Mesh(g, mat);
+          obj.position.set(tx, ty, tz);
+          break;
+        }
+        case 3: {
+          const r = sx / 2;
+          const g = new THREE.CylinderGeometry(r, r, sy, 16);
+          const mat = new THREE.MeshStandardMaterial({ color, transparent: m.color.a < 1, opacity: m.color.a });
+          obj = new THREE.Mesh(g, mat);
+          obj.position.set(tx, ty, tz);
+          obj.quaternion.set(qx, qy, qz, qw);
+          break;
+        }
+        case 4: {
+          const pts = m.points.map(p => {
+            const [px, py, pz] = ik_to_threejs(p.x, p.y, p.z);
+            return new THREE.Vector3(px, py, pz);
+          });
+          const g = new THREE.BufferGeometry().setFromPoints(pts);
+          const mat = new THREE.LineBasicMaterial({ color, transparent: m.color.a < 1, opacity: m.color.a });
+          obj = new THREE.Line(g, mat);
+          break;
+        }
+        case 9: {
+          const canvas = document.createElement("canvas");
+          canvas.width = 256;
+          canvas.height = 64;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "rgba(0,0,0,0.6)";
+          ctx.roundRect(0, 0, 256, 64, 8);
+          ctx.fill();
+          ctx.fillStyle = "#" + color.getHexString();
+          ctx.font = "bold 28px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(m.text, 128, 42);
+          const tex = new THREE.CanvasTexture(canvas);
+          const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, opacity: m.color.a });
+          obj = new THREE.Sprite(spriteMat);
+          obj.position.set(tx, ty, tz);
+          obj.scale.set(0.12, 0.03, 1);
+          break;
+        }
+      }
+
+      if (obj) {
+        const lifetime = m.lifetime ? m.lifetime.sec + m.lifetime.nanosec / 1e9 : 0;
+        obj.userData = { ns: m.ns, id: m.id, lifetime };
+        this.scene.add(obj);
+        this.markers.set(key, obj);
+        this.markerReceivedAt.set(key, performance.now());
+      }
+    }
+  }
+
+  _removeMarker(ns, id) {
+    const key = `${ns}:${id}`;
+    const obj = this.markers.get(key);
+    if (obj) {
+      this.scene.remove(obj);
+      this.markers.delete(key);
+      this.markerReceivedAt.delete(key);
+    }
+  }
+
+  _removeNamespace(ns) {
+    for (const [key, obj] of this.markers) {
+      if (obj.userData.ns === ns) {
+        this.scene.remove(obj);
+        this.markers.delete(key);
+        this.markerReceivedAt.delete(key);
+      }
+    }
+  }
+
+  _cleanExpiredMarkers() {
+    const now = performance.now();
+    for (const [key, obj] of this.markers) {
+      const lifetime = obj.userData.lifetime;
+      if (lifetime <= 0) continue;
+      const received = this.markerReceivedAt.get(key) || 0;
+      if (now - received > lifetime * 1000) {
+        this.scene.remove(obj);
+        this.markers.delete(key);
+        this.markerReceivedAt.delete(key);
+      }
+    }
+  }
+
   resetEnvironment() {
     for (const obj of this.sceneObjects) {
       this.scene.remove(obj.mesh);
       this.scene.remove(obj.label);
     }
     this.sceneObjects = [];
+    this._removeNamespace("trajectory_waypoints");
+    this._removeNamespace("trajectory_path");
+    this._removeNamespace("trajectory_goal");
   }
 
   createLabel(text, x, y, z) {
@@ -313,6 +447,7 @@ class RobotViewer {
 
   animate() {
     requestAnimationFrame(() => this.animate());
+    this._cleanExpiredMarkers();
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }

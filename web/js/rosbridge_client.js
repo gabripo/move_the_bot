@@ -13,6 +13,7 @@ class RosbridgeClient {
     this.subscribeJointStates();
     this.subscribeObjectSpawn();
     this.subscribeAgentLog();
+    this.subscribeMarkerArray();
   }
 
   initTopics() {
@@ -143,6 +144,17 @@ class RosbridgeClient {
       } catch (e) {
         this.addLogEntry(`Object spawn error: ${e.message}`);
       }
+    });
+  }
+
+  subscribeMarkerArray() {
+    const topic = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/visualization_marker_array",
+      messageType: "visualization_msgs/MarkerArray",
+    });
+    topic.subscribe((msg) => {
+      if (this.viewer) this.viewer.updateMarkers(msg.markers);
     });
   }
 

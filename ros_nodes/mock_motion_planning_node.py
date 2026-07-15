@@ -1,9 +1,11 @@
+import math
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, Point
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Header, String
+from std_msgs.msg import Header, String, ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
 from moveit_msgs.srv import GetPositionIK, GetMotionPlan
 from moveit_msgs.msg import (
     CollisionObject, PlanningScene, PlanningSceneWorld,
@@ -23,6 +25,7 @@ class MockMotionPlanningNode(Node):
 
         self.joint_pub = self.create_publisher(JointState, "/joint_states", 10)
         self.scene_pub = self.create_publisher(PlanningScene, "/planning_scene", 10)
+        self.traj_marker_pub = self.create_publisher(MarkerArray, "/visualization_marker_array", 10)
 
         self.goal_sub = self.create_subscription(
             PoseStamped, "/target_goal", self.goal_callback, 10
@@ -93,6 +96,126 @@ class MockMotionPlanningNode(Node):
         self.scene_pub.publish(scene)
         self.get_logger().info("Added table to planning scene")
 
+    L0 = 0.20
+    L1 = 0.25
+    L2 = 0.25
+
+    @staticmethod
+    def _gripper_fk(theta1, theta2, theta3, d4):
+        r = MockMotionPlanningNode.L1 * math.sin(theta2) \
+            + MockMotionPlanningNode.L2 * math.sin(theta2 + theta3)
+        x = r * math.cos(theta1)
+        y = r * math.sin(theta1)
+        z = MockMotionPlanningNode.L0 \
+            + MockMotionPlanningNode.L1 * math.cos(theta2) \
+            + MockMotionPlanningNode.L2 * math.cos(theta2 + theta3)
+        return (x, y, z)
+
+    def _clear_trajectory_markers(self, stamp):
+        array = MarkerArray()
+        for ns in ["trajectory_waypoints", "trajectory_path", "trajectory_goal"]:
+            m = Marker()
+            m.header.frame_id = "base_link"
+            m.header.stamp = stamp
+            m.ns = ns
+            m.action = Marker.DELETEALL
+            array.markers.append(m)
+        self.traj_marker_pub.publish(array)
+
+    def _publish_trajectory_markers(self, joint_trajectory):
+        stamp = self.get_clock().now().to_msg()
+        self._clear_trajectory_markers(stamp)
+
+        points = joint_trajectory.points
+        if not points:
+            return
+
+        joint_names = joint_trajectory.joint_names
+        array = MarkerArray()
+
+        def joint_val(name, point):
+            if name in joint_names:
+                return point.positions[joint_names.index(name)]
+            return 0.0
+
+        line = Marker()
+        line.header.frame_id = "base_link"
+        line.header.stamp = stamp
+        line.ns = "trajectory_path"
+        line.id = 0
+        line.type = Marker.LINE_STRIP
+        line.action = Marker.ADD
+        line.scale.x = 0.008
+        line.color = ColorRGBA(r=1.0, g=0.7, b=0.0, a=0.8)
+        line.pose.orientation.w = 1.0
+
+        n = len(points)
+        for i, point in enumerate(points):
+            t1 = joint_val("base_joint", point)
+            t2 = joint_val("shoulder_joint", point)
+            t3 = joint_val("elbow_joint", point)
+            d4 = joint_val("gripper_joint", point)
+            pos = self._gripper_fk(t1, t2, t3, d4)
+
+            p = Point()
+            p.x = pos[0]
+            p.y = pos[1]
+            p.z = pos[2]
+            line.points.append(p)
+
+            sphere = Marker()
+            sphere.header.frame_id = "base_link"
+            sphere.header.stamp = stamp
+            sphere.ns = "trajectory_waypoints"
+            sphere.id = i
+            sphere.type = Marker.SPHERE
+            sphere.action = Marker.ADD
+            sphere.pose.position.x = pos[0]
+            sphere.pose.position.y = pos[1]
+            sphere.pose.position.z = pos[2]
+            sphere.pose.orientation.w = 1.0
+            sphere.scale.x = 0.025
+            sphere.scale.y = 0.025
+            sphere.scale.z = 0.025
+            t = i / max(n - 1, 1)
+            sphere.color = ColorRGBA(r=t, g=1.0 - t, b=0.0, a=0.9)
+            sphere.lifetime.sec = 30
+            array.markers.append(sphere)
+
+        line.lifetime.sec = 30
+        array.markers.append(line)
+
+        goal = Marker()
+        goal.header.frame_id = "base_link"
+        goal.header.stamp = stamp
+        goal.ns = "trajectory_goal"
+        goal.id = 0
+        goal.type = Marker.SPHERE
+        goal.action = Marker.ADD
+        gp = points[-1]
+        gpos = self._gripper_fk(
+            joint_val("base_joint", gp),
+            joint_val("shoulder_joint", gp),
+            joint_val("elbow_joint", gp),
+            joint_val("gripper_joint", gp),
+        )
+        goal.pose.position.x = gpos[0]
+        goal.pose.position.y = gpos[1]
+        goal.pose.position.z = gpos[2]
+        goal.pose.orientation.w = 1.0
+        goal.scale.x = 0.05
+        goal.scale.y = 0.05
+        goal.scale.z = 0.05
+        goal.color = ColorRGBA(r=1.0, g=0.2, b=0.1, a=0.9)
+        goal.lifetime.sec = 30
+        array.markers.append(goal)
+
+        self.traj_marker_pub.publish(array)
+        n_wp = len(points)
+        self.get_logger().info(
+            f"Published {n_wp} trajectory waypoint markers"
+        )
+
     def reset_callback(self, msg: String):
         if msg.data != "reset":
             return
@@ -102,6 +225,9 @@ class MockMotionPlanningNode(Node):
         self._trajectory = None
         self._trajectory_done = True
 
+        stamp = self.get_clock().now().to_msg()
+        self._clear_trajectory_markers(stamp)
+
         scene = PlanningScene()
         scene.is_diff = True
         scene.robot_state.is_diff = True
@@ -109,7 +235,7 @@ class MockMotionPlanningNode(Node):
         remove = CollisionObject()
         remove.id = "table"
         remove.header.frame_id = "base_link"
-        remove.header.stamp = self.get_clock().now().to_msg()
+        remove.header.stamp = stamp
         remove.operation = CollisionObject.REMOVE
 
         scene.world = PlanningSceneWorld()
@@ -273,6 +399,8 @@ class MockMotionPlanningNode(Node):
         self._trajectory_start = self.get_clock().now()
         self._trajectory_done = False
         self._planning = False
+
+        self._publish_trajectory_markers(self._trajectory)
 
 
 def main(args=None):
