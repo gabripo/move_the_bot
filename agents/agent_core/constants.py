@@ -30,6 +30,22 @@ WORKSPACE = {
     "z_min": 0.0, "z_max": 0.5,
 }
 
+BREAKDOWN_PROMPT = (
+    "Split the user's command into separate simple commands. "
+    "Each simple command must describe exactly one action (spawn, move_to, grasp, release, none). "
+    'Use "and", "then", commas as split points. '
+    "Repeat any missing verbs so each command is self-contained. "
+    "You MUST return a JSON array of plain text strings."
+    " Never return JSON objects or dicts. Only a flat array of strings."
+    "\nExamples:\n"
+    '  "move to the apple, then to the bottle"\n'
+    '    -> ["move to the apple", "move to the bottle"]\n'
+    '  "create an apple and a mug"\n'
+    '    -> ["create an apple", "create a mug"]\n'
+    '  "grasp the bottle"\n'
+    '    -> ["move to the bottle", "grasp"]'
+)
+
 POSITIONAL_QUALIFIERS = {
     "left of": "left",
     "to the left": "left",
@@ -58,6 +74,9 @@ EXAMPLES = [
     ('"grasp"', '{"action":"grasp"}'),
     ('"release"', '{"action":"release"}'),
     ('"do nothing"', '{"action":"none"}'),
+    ('"spawn a bottle and move it to the right"', '[{"action":"spawn","object":"bottle","target":{"x":0.0,"y":0.25,"z":0.25}},{"action":"move_to","target":{"x":0.15,"y":0.25,"z":0.25}}]'),
+    ('"grasp the bottle"', '[{"action":"move_to","target":{"x":0.0,"y":0.25,"z":0.25}},{"action":"grasp"}]'),
+    ('"move to the apple, then to the bottle"', '[{"action":"move_to","target":{"x":0.0,"y":0.25,"z":0.25}},{"action":"move_to","target":{"x":0.15,"y":0.25,"z":0.15}}]'),
 ]
 
 POSITION_KEYWORDS_FORMATTED = "\n".join(
@@ -74,6 +93,12 @@ ACTIONS:
   spawn    -> {{"action":"spawn","object":"name","target":{{"x":float,"y":float,"z":float}}}}
   none     -> {{"action":"none"}}
 
+You can return a single action object, or a JSON array of action objects for multi-step commands.
+Examples:
+  "spawn a bottle and move it to the right" -> [{{"action":"spawn",...}},{{"action":"move_to",...}}]
+  "grasp the bottle" -> [{{"action":"move_to",...}},{{"action":"grasp"}}]
+  "add an apple" -> {{"action":"spawn",...}}
+
 WORKSPACE (Three.js frame: x=right, y=up, z=toward viewer):
   x in [{WORKSPACE['x_min']}, {WORKSPACE['x_max']}], y in [{WORKSPACE['y_min']}, {WORKSPACE['y_max']}], z in [{WORKSPACE['z_min']}, {WORKSPACE['z_max']}]
   Center = {MIDDLE}
@@ -86,7 +111,7 @@ POSITIONAL QUALIFIERS (common phrases mapped to keywords):
 If the user uses an unfamiliar positional phrase, infer the intent and map to the closest keyword. Unknown directions default to center.
 
 RULES:
-- spawn: triggered by create/place/spawn/add/put/make + object name + optional position.
+- spawn: triggered by create/place/spawn/add/put/make/introduce + object name + optional position.
   If position is a keyword like "right" or "left", use the coordinates above.
   If position is "here" or unspecified, use the current Hand position.
 - move_to: triggered by move/go/reach. Extract explicit x y z numbers if given,

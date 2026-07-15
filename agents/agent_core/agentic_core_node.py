@@ -1,14 +1,16 @@
 import json
 import re
+import time
 import requests
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point, PoseStamped
 from std_msgs.msg import Bool, Header, String
 
-from constants import (BUILTIN_OBJECTS, EXAMPLES, LLM_ONLY, MIDDLE,
-                       OLLAMA_MODEL, OLLAMA_URL, POSITIONAL_QUALIFIERS,
-                       POSITION_KEYWORDS, SYSTEM_PROMPT)
+from constants import (BREAKDOWN_PROMPT, BUILTIN_OBJECTS, EXAMPLES, LLM_ONLY,
+                       MIDDLE, OLLAMA_MODEL, OLLAMA_URL,
+                       POSITIONAL_QUALIFIERS, POSITION_KEYWORDS,
+                       SYSTEM_PROMPT)
 
 
 def threejs_to_ik(x, y, z):
@@ -42,7 +44,7 @@ def resolve_position(text):
 def parse_voice_command(text, spawned_objects=None):
     t = text.lower().strip()
 
-    if any(kw in t for kw in ["create ", "spawn ", "place ", "make ", "add ", "put ", "set "]):
+    if any(kw in t for kw in ["create ", "spawn ", "place ", "make ", "add ", "put ", "set ", "introduce "]):
         obj = find_object(t)
         if obj:
             nums = extract_numbers(t)
@@ -72,6 +74,9 @@ def parse_voice_command(text, spawned_objects=None):
         pos = resolve_position(t)
         if pos:
             return {"action": "move_to", "target": {"x": pos[0], "y": pos[1], "z": pos[2]}}
+        if spawned_objects and re.search(r"\b(it|them)\b", t):
+            last = list(spawned_objects.keys())[-1]
+            return {"action": "move_to", "target": dict(spawned_objects[last])}
         if len(nums) == 1:
             return {"action": "move_to", "target": {"x": nums[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
         return {"action": "move_to", "target": {"x": MIDDLE[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
@@ -126,11 +131,11 @@ class AgenticCoreNode(Node):
         msg.data = LLM_ONLY
         self.llm_only_state_pub.publish(msg)
 
-    def query_ollama(self, prompt):
+    def query_ollama(self, prompt, system=None):
         payload = {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
-            "system": SYSTEM_PROMPT,
+            "system": system or SYSTEM_PROMPT,
             "stream": False,
             "temperature": 0.1,
             "format": "json",
@@ -139,7 +144,7 @@ class AgenticCoreNode(Node):
             resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
             resp.raise_for_status()
             data = resp.json()
-            self.get_logger().info(f"Ollama response: {data}")
+            # self.get_logger().info(f"Ollama response: {data}")
             return data["response"]
         except Exception as e:
             self.get_logger().error(f"Ollama error: {e}")
@@ -155,6 +160,71 @@ class AgenticCoreNode(Node):
         self.log_pub.publish(msg)
         self.get_logger().info(message)
 
+    @staticmethod
+    def _dict_to_string(d):
+        act = d.get("action", "")
+        if act == "spawn":
+            return f"create {d.get('object', 'object')}"
+        if act == "move_to":
+            return "move"
+        if act == "grasp":
+            return "grasp"
+        if act == "release":
+            return "release"
+        return ""
+
+    def _breakdown_command(self, voice):
+        self._log("LLM: breaking down command")
+        response = self.query_ollama(
+            f'Voice: "{voice}"\nJSON:', system=BREAKDOWN_PROMPT
+        )
+        if response is None:
+            return [voice]
+        try:
+            parts = json.loads(response.strip())
+            if isinstance(parts, list) and len(parts) > 0:
+                if all(isinstance(s, str) for s in parts):
+                    return parts
+                if all(isinstance(d, dict) for d in parts):
+                    strings = [self._dict_to_string(d) for d in parts if self._dict_to_string(d)]
+                    return strings if strings else [voice]
+            if isinstance(parts, dict) and len(parts) > 0:
+                for val in parts.values():
+                    if isinstance(val, list) and len(val) > 0:
+                        if all(isinstance(s, str) for s in val):
+                            return val
+                        if all(isinstance(d, dict) for d in val):
+                            strings = [self._dict_to_string(d) for d in val if self._dict_to_string(d)]
+                            return strings if strings else [voice]
+                return list(parts.keys())
+            self._log(f"LLM: unexpected breakdown format → {response}")
+            return [voice]
+        except (json.JSONDecodeError, TypeError):
+            self._log(f"LLM: failed to parse breakdown → {response}")
+            return [voice]
+
+    def _query_llm_for_action(self, cmd):
+        pos = self.current_pos or Point(x=0.0, y=0.3, z=0.15)
+        obj_info = "Objects: " + ", ".join(
+            f'"{n}" at ({p["x"]},{p["y"]},{p["z"]})' for n, p in self.spawned_objects.items()
+        ) + "\n" if self.spawned_objects else ""
+        prompt = (
+            f"Hand: ({pos.x:.3f}, {pos.y:.3f}, {pos.z:.3f})\n"
+            f"{obj_info}"
+            f'Voice: "{cmd}"\n'
+            "JSON:"
+        )
+        response = self.query_ollama(prompt)
+        if response is None:
+            self._log("LLM: request failed for action generation")
+            return None
+        self._log(f"LLM: {response}")
+        try:
+            return json.loads(response.strip())
+        except json.JSONDecodeError:
+            self._log(f"LLM: failed to parse → {response}")
+            return None
+
     def reasoning_loop(self):
         if self.current_voice is None:
             return
@@ -162,56 +232,60 @@ class AgenticCoreNode(Node):
         voice = self.current_voice
         self.current_voice = None
 
-        use_llm = LLM_ONLY or self.llm_only_toggle
-        action = None
-        if not use_llm:
-            action = parse_voice_command(voice, self.spawned_objects)
-        if action is None:
-            if LLM_ONLY:
-                self._log("LLM_ONLY: skipping rule parser → querying LLM")
-            elif self.llm_only_toggle:
-                self._log("Toggle: skipping rule parser → querying LLM")
-            else:
-                self._log("Rule parser: no match → querying LLM")
-            pos = self.current_pos or Point(x=0.0, y=0.3, z=0.15)
-            obj_info = "Objects: " + ", ".join(
-                f'"{n}" at ({p["x"]},{p["y"]},{p["z"]})' for n, p in self.spawned_objects.items()
-            ) + "\n" if self.spawned_objects else ""
-            obj_examples = "".join(
-                f'  "move to {n}" → {{"action":"move_to","target":{{"x":{p["x"]},"y":{p["y"]},"z":{p["z"]}}}}}\n'
-                for n, p in self.spawned_objects.items()
-            )
-            prompt = (
-                f"Hand: ({pos.x:.3f},{pos.y:.3f},{pos.z:.3f})\n"
-                f"{obj_info}"
-                f'Voice: "{voice}"\n'
-                f"Available: {', '.join(BUILTIN_OBJECTS)}\n"
-                f"Position keywords: {' '.join(f'{k}=({v[0]},{v[1]},{v[2]})' for k, v in sorted(POSITION_KEYWORDS.items()))}\n"
-                f"Positional qualifiers: {', '.join(POSITIONAL_QUALIFIERS)}\n"
-                "Examples:\n"
-                + "\n".join(f'  {v} → {j}' for v, j in EXAMPLES)
-                + f"\n{obj_examples}"
-                "JSON:"
-            )
-            response = self.query_ollama(prompt)
-            if response is None:
-                self._log("LLM: request failed")
-                return
-            self._log(f"LLM: {response}")
-            try:
-                action = json.loads(response.strip())
-            except json.JSONDecodeError:
-                self._log(f"LLM: failed to parse → {response}")
-                return
-        else:
-            self._log(f"Rule parser: {json.dumps(action)}")
+        self._log(f"Voice: {voice}")
 
-        self.execute_action(action)
+        sub_commands = self._breakdown_command(voice)
+        self._log(f"Sub-commands: {sub_commands}")
+
+        actions = []
+        for cmd in sub_commands:
+            use_llm = LLM_ONLY or self.llm_only_toggle
+            action = None
+            if not use_llm:
+                action = parse_voice_command(cmd, self.spawned_objects)
+            if action is not None:
+                if use_llm:
+                    self._log("Rule parser result (LLM_ONLY mode)")
+                else:
+                    self._log(f"Rule parser: {json.dumps(action)}")
+                if isinstance(action, list):
+                    actions.extend(action)
+                else:
+                    actions.append(action)
+            else:
+                if use_llm:
+                    self._log("LLM_ONLY: querying LLM")
+                else:
+                    self._log("Rule parser: no match → querying LLM")
+                action = self._query_llm_for_action(cmd)
+                if action is not None:
+                    if isinstance(action, list):
+                        actions.extend(action)
+                    else:
+                        actions.append(action)
+
+        if not actions:
+            self._log("No actions to execute")
+            return
+        if len(actions) == 1:
+            self.execute_actions(actions[0])
+        else:
+            self.execute_actions(actions)
 
     def _pub_str(self, publisher, data):
         msg = String()
         msg.data = data
         publisher.publish(msg)
+
+    def execute_actions(self, actions):
+        if isinstance(actions, list):
+            for i, action in enumerate(actions):
+                self._log(f"Step {i+1}/{len(actions)}")
+                self.execute_action(action)
+                if i < len(actions) - 1:
+                    time.sleep(3.0)
+        else:
+            self.execute_action(actions)
 
     def execute_action(self, action):
         act = action.get("action", "none")
