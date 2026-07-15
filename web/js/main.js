@@ -33,6 +33,12 @@ window.addEventListener("load", () => {
     bridge.resetEnvironment();
   });
 
+  // Clear model cache button
+  document.getElementById("btn-clear-cache").addEventListener("click", () => {
+    bridge.publishString("/reset_command", "clear_cache");
+    bridge.addLogEntry("Clearing model cache...");
+  });
+
   // Text input
   const textInput = document.getElementById("text-input");
   const textSend = document.getElementById("text-send");

@@ -1,6 +1,8 @@
 import json
 import os
+import shutil
 import rclpy
+from pathlib import Path
 from rclpy.node import Node
 from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
@@ -29,6 +31,15 @@ class ObjectSpawnNode(Node):
         return file_path[idx:] if idx >= 0 else ""
 
     def reset_callback(self, msg: String):
+        if msg.data == "clear_cache":
+            cache = Path(os.environ.get("MODEL_CACHE_DIR", "/models/cache"))
+            count = 0
+            for f in cache.glob("*"):
+                if f.is_file() and f.suffix in (".glb", ".gltf"):
+                    f.unlink()
+                    count += 1
+            self.get_logger().info(f"Cleared {count} model(s) from cache")
+            return
         if msg.data != "reset":
             return
         self.get_logger().info("Clearing spawned objects")
