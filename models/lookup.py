@@ -25,17 +25,18 @@ def lookup(object_name: str):
 
     cache_dir = _get_cache_dir()
     cache_key = hashlib.md5(name.encode()).hexdigest()
-    for ext in [".glb", ".gltf"]:
-        cached = cache_dir / f"{cache_key}{ext}"
-        if cached.exists():
-            return (str(cached), "cache")
 
     api_key = os.environ.get("SKETCHFAB_API_KEY")
     if api_key:
         from .sketchfab_client import download_model
-        result = download_model(name, api_key, cache_dir)
+        result = download_model(name, api_key, cache_dir, cache_key)
         if result:
             return (result, "sketchfab")
+
+    for ext in [".glb", ".gltf"]:
+        cached = cache_dir / f"{cache_key}{ext}"
+        if cached.exists():
+            return (str(cached), "cache")
 
     if name in BUILTIN_MAP:
         return (str(Path(__file__).parent / "builtin" / BUILTIN_MAP[name]), "builtin")
