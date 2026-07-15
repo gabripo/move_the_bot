@@ -129,7 +129,7 @@ class AgenticCoreNode(Node):
             "format": "json",
         }
         try:
-            resp = requests.post(OLLAMA_URL, json=payload, timeout=30)
+            resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
             resp.raise_for_status()
             data = resp.json()
             self.get_logger().info(f"Ollama response: {data}")
