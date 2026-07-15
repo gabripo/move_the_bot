@@ -89,6 +89,7 @@ services:
     environment:
       <<: *common-env
       OLLAMA_URL: http://ollama:11434/api/generate
+      LLM_ONLY: ${LLM_ONLY:-0}
     depends_on:
       ros2:
         condition: service_started

@@ -12,6 +12,7 @@ OLLAMA_MODEL = os.environ.get(
     "OLLAMA_MODEL",
     "llama3.2:3b-instruct-q4_K_M",
 )
+LLM_ONLY = os.environ.get("LLM_ONLY", "0") == "1"
 # Recommended models (light → capable):
 #   llama3.2:3b-instruct-q4_K_M  (fast, ~2 GB RAM)
 #   llama3.2:3b-instruct-fp16    (more accurate, ~6 GB RAM)
@@ -222,9 +223,14 @@ class AgenticCoreNode(Node):
 
         self._log(f'Voice: "{voice}"')
 
-        action = parse_voice_command(voice, self.spawned_objects)
+        action = None
+        if not LLM_ONLY:
+            action = parse_voice_command(voice, self.spawned_objects)
         if action is None:
-            self._log("Rule parser: no match → querying LLM")
+            if LLM_ONLY:
+                self._log("LLM_ONLY: skipping rule parser → querying LLM")
+            else:
+                self._log("Rule parser: no match → querying LLM")
             pos = self.current_pos or Point(x=0.0, y=0.3, z=0.15)
             objects_info = ""
             if self.spawned_objects:
