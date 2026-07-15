@@ -42,6 +42,13 @@ class RosbridgeClient {
       ros: this.ros, name: "/reset_command", messageType: "std_msgs/String",
     });
     this.topics["/reset_command"].advertise();
+
+    this.topics["/llm_only_toggle"] = new ROSLIB.Topic({
+      ros: this.ros, name: "/llm_only_toggle", messageType: "std_msgs/Bool",
+    });
+    this.topics["/llm_only_toggle"].advertise();
+
+    this.subscribeLLMState();
   }
 
   setViewer(viewer) {
@@ -167,6 +174,27 @@ class RosbridgeClient {
     topic.subscribe((msg) => {
       this.addLogEntry(msg.data);
     });
+  }
+
+  subscribeLLMState() {
+    const topic = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/llm_only_state",
+      messageType: "std_msgs/Bool",
+    });
+    const chk = document.getElementById("chk-llm-only");
+    chk.addEventListener("change", () => {
+      this.publishBool("/llm_only_toggle", chk.checked);
+    });
+    topic.subscribe((msg) => {
+      document.getElementById("llm-only-area").style.display = msg.data ? "none" : "block";
+    });
+  }
+
+  publishBool(topic, value) {
+    const t = this.topics[topic];
+    if (!t) return;
+    t.publish(new ROSLIB.Message({ data: value }));
   }
 
   addLogEntry(text) {

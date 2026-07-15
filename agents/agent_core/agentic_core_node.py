@@ -4,7 +4,7 @@ import requests
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point, PoseStamped
-from std_msgs.msg import Header, String
+from std_msgs.msg import Bool, Header, String
 
 from constants import (BUILTIN_OBJECTS, EXAMPLES, LLM_ONLY, MIDDLE,
                        OLLAMA_MODEL, OLLAMA_URL, POSITION_KEYWORDS,
@@ -90,11 +90,16 @@ class AgenticCoreNode(Node):
 
         self.sub_spatial = self.create_subscription(Point, "/spatial_coords", self.spatial_callback, 10)
         self.sub_voice = self.create_subscription(String, "/voice_commands", self.voice_callback, 10)
+        self.sub_toggle = self.create_subscription(Bool, "/llm_only_toggle", self.toggle_callback, 10)
+
+        self.llm_only_state_pub = self.create_publisher(Bool, "/llm_only_state", 10)
+        self.llm_only_toggle = False
+        self._publish_llm_state()
 
         self.current_pos = Point(x=0.0, y=0.3, z=0.15)
         self.current_voice = None
         self.spawned_objects = {}
-        self.timer = self.create_timer(0.5, self.reasoning_loop)
+        self.timer = self.create_timer(0.5, self.timer_tick)
         self.get_logger().info("Agentic Core Node started")
 
     def spatial_callback(self, msg):
@@ -103,6 +108,16 @@ class AgenticCoreNode(Node):
     def voice_callback(self, msg):
         self.current_voice = msg.data
         self.get_logger().info(f"Voice: {msg.data}")
+
+    def toggle_callback(self, msg):
+        self.llm_only_toggle = msg.data
+        self._publish_llm_state()
+        self.get_logger().info(f"LLM toggle: {self.llm_only_toggle}")
+
+    def _publish_llm_state(self):
+        msg = Bool()
+        msg.data = LLM_ONLY
+        self.llm_only_state_pub.publish(msg)
 
     def query_ollama(self, prompt):
         payload = {
@@ -123,6 +138,10 @@ class AgenticCoreNode(Node):
             self.get_logger().error(f"Ollama error: {e}")
             return None
 
+    def timer_tick(self):
+        self._publish_llm_state()
+        self.reasoning_loop()
+
     def _log(self, message):
         msg = String()
         msg.data = message
@@ -138,12 +157,15 @@ class AgenticCoreNode(Node):
 
         self._log(f'Voice: "{voice}"')
 
+        use_llm = LLM_ONLY or self.llm_only_toggle
         action = None
-        if not LLM_ONLY:
+        if not use_llm:
             action = parse_voice_command(voice, self.spawned_objects)
         if action is None:
             if LLM_ONLY:
                 self._log("LLM_ONLY: skipping rule parser → querying LLM")
+            elif self.llm_only_toggle:
+                self._log("Toggle: skipping rule parser → querying LLM")
             else:
                 self._log("Rule parser: no match → querying LLM")
             pos = self.current_pos or Point(x=0.0, y=0.3, z=0.15)
