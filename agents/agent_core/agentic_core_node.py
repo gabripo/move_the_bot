@@ -38,61 +38,75 @@ POSITION_KEYWORDS = {
     "middle": MIDDLE,
 }
 
-SYSTEM_PROMPT = """You are a robot arm controller.
+WORKSPACE = {
+    "x_min": -0.5, "x_max": 0.5,
+    "y_min": 0.0, "y_max": 0.5,
+    "z_min": 0.0, "z_max": 0.5,
+}
 
-ACTIONS:
-  move_to  → {"action":"move_to","target":{"x":float,"y":float,"z":float}}
-  grasp    → {"action":"grasp"}
-  release  → {"action":"release"}
-  spawn    → {"action":"spawn","object":"name","target":{"x":float,"y":float,"z":float}}
-  none     → {"action":"none"}
+def _build_system_prompt():
+    pos_lines = []
+    for kw, (x, y, z) in sorted(POSITION_KEYWORDS.items()):
+        pos_lines.append(f'  "{kw}" → ({x:7.3f}, {y:.3f}, {z:.3f})')
 
-AVAILABLE OBJECTS: apple, mug, bottle, cube, sphere, can, cylinder, table
+    bkw = POSITION_KEYWORDS["back"]
+    rkw = POSITION_KEYWORDS["right"]
+    ckw = POSITION_KEYWORDS["center"]
 
-WORKSPACE (Three.js frame: x=right, y=up, z=toward viewer):
-  x ∈ [-0.5, 0.5], y ∈ [0.0, 0.5], z ∈ [0.0, 0.5]
-  Center = (0.0, 0.25, 0.25)
+    return (
+        "You are a robot arm controller.\n"
+        "\n"
+        "ACTIONS:\n"
+        '  move_to  → {"action":"move_to","target":{"x":float,"y":float,"z":float}}\n'
+        '  grasp    → {"action":"grasp"}\n'
+        '  release  → {"action":"release"}\n'
+        '  spawn    → {"action":"spawn","object":"name","target":{"x":float,"y":float,"z":float}}\n'
+        '  none     → {"action":"none"}\n'
+        "\n"
+        "AVAILABLE OBJECTS: apple, mug, bottle, cube, sphere, can, cylinder, table\n"
+        "\n"
+        f"WORKSPACE (Three.js frame: x=right, y=up, z=toward viewer):\n"
+        f"  x ∈ [{WORKSPACE['x_min']}, {WORKSPACE['x_max']}], "
+        f"y ∈ [{WORKSPACE['y_min']}, {WORKSPACE['y_max']}], "
+        f"z ∈ [{WORKSPACE['z_min']}, {WORKSPACE['z_max']}]\n"
+        f"  Center = {MIDDLE}\n"
+        "\n"
+        "POSITION KEYWORDS (map to these coordinates):\n"
+        f"{chr(10).join(pos_lines)}\n"
+        "\n"
+        "RULES:\n"
+        "- spawn: triggered by create/place/spawn/add/put/make + object name + optional position.\n"
+        '  If position is a keyword like "right" or "left", use the coordinates above.\n'
+        '  If position is "here" or unspecified, use the current Hand position.\n'
+        "- move_to: triggered by move/go/reach. Extract explicit x y z numbers if given,\n"
+        "  or use position keywords, or move to a named object.\n"
+        "- grasp: triggered by grab/pick/take/get.\n"
+        "- release: triggered by release/drop.\n"
+        "\n"
+        "EXAMPLES:\n"
+        '  Voice: "move to 0.2 0.1 0.3"\n'
+        '  JSON: {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}\n'
+        "\n"
+        f'  Voice: "teleport the arm to the back"\n'
+        f'  JSON: {{"action":"move_to","target":{{"x":{bkw[0]},"y":{bkw[1]},"z":{bkw[2]}}}}}\n'
+        "\n"
+        f'  Voice: "add a bottle to the right"\n'
+        f'  JSON: {{"action":"spawn","object":"bottle","target":{{"x":{rkw[0]},"y":{rkw[1]},"z":{rkw[2]}}}}}\n'
+        "\n"
+        f'  Voice: "create apple at center"\n'
+        f'  JSON: {{"action":"spawn","object":"apple","target":{{"x":{ckw[0]},"y":{ckw[1]},"z":{ckw[2]}}}}}\n'
+        "\n"
+        '  Voice: "grasp"\n'
+        '  JSON: {"action":"grasp"}\n'
+        "\n"
+        '  Voice: "release"\n'
+        '  JSON: {"action":"release"}\n'
+        "\n"
+        '  Voice: "do nothing"\n'
+        '  JSON: {"action":"none"}'
+    )
 
-POSITION KEYWORDS (map to these coordinates):
-  "left"   → ( -0.15, 0.25, 0.15 )
-  "right"  → (  0.15, 0.25, 0.15 )
-  "front"  → (  0.0,  0.35, 0.15 )
-  "back"   → (  0.0,  0.15, -0.15)
-  "center" → (  0.0,  0.25, 0.25 )
-  "middle" → (  0.0,  0.25, 0.25 )
-  "high"   → (  0.0,  0.25, 0.45 )
-  "low"    → (  0.0,  0.25, 0.05 )
-
-RULES:
-- spawn: triggered by create/place/spawn/add/put/make + object name + optional position.
-  If position is a keyword like "right" or "left", use the coordinates above.
-  If position is "here" or unspecified, use the current Hand position.
-- move_to: triggered by move/go/reach. Extract explicit x y z numbers if given,
-  or use position keywords, or move to a named object.
-- grasp: triggered by grab/pick/take/get.
-- release: triggered by release/drop.
-
-EXAMPLES:
-  Voice: "move to 0.2 0.1 0.3"
-  JSON: {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}
-
-  Voice: "teleport the arm to the back"
-  JSON: {"action":"move_to","target":{"x":0.0,"y":0.15,"z":-0.15}}
-
-  Voice: "add a bottle to the right"
-  JSON: {"action":"spawn","object":"bottle","target":{"x":0.15,"y":0.25,"z":0.15}}
-
-  Voice: "create apple at center"
-  JSON: {"action":"spawn","object":"apple","target":{"x":0.0,"y":0.25,"z":0.25}}
-
-  Voice: "grasp"
-  JSON: {"action":"grasp"}
-
-  Voice: "release"
-  JSON: {"action":"release"}
-
-  Voice: "do nothing"
-  JSON: {"action":"none"}"""
+SYSTEM_PROMPT = _build_system_prompt()
 
 
 def threejs_to_ik(x, y, z):
@@ -245,17 +259,20 @@ class AgenticCoreNode(Node):
                         f'  "move to {obj_name}" → {{"action":"move_to",'
                         f'"target":{{"x":{obj_pos["x"]},"y":{obj_pos["y"]},"z":{obj_pos["z"]}}}}}\n'
                     )
+            pos_kw_str = " ".join(
+                f'{k}=({v[0]},{v[1]},{v[2]})'
+                for k, v in sorted(POSITION_KEYWORDS.items())
+            )
             prompt = (
                 f"Hand: ({pos.x:.3f},{pos.y:.3f},{pos.z:.3f})\n"
                 f"{objects_info}"
                 f'Voice: "{voice}"\n'
-                "Position keywords: left=(-0.15,0.25,0.15) right=(0.15,0.25,0.15) "
-                "front=(0.0,0.35,0.15) back=(0.0,0.15,-0.15) center=middle=(0.0,0.25,0.25)\n"
+                f"Position keywords: {pos_kw_str}\n"
                 "Available objects: apple, mug, bottle, cube, sphere, can, cylinder\n"
                 "Examples:\n"
                 '  "move to 0.2 0.1 0.3" → {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}\n'
-                '  "teleport the arm to the back" → {"action":"move_to","target":{"x":0.0,"y":0.15,"z":-0.15}}\n'
-                '  "add a bottle to the right" → {"action":"spawn","object":"bottle","target":{"x":0.15,"y":0.25,"z":0.15}}\n'
+                f'  "teleport the arm to the back" → {{"action":"move_to","target":{{"x":{POSITION_KEYWORDS["back"][0]},"y":{POSITION_KEYWORDS["back"][1]},"z":{POSITION_KEYWORDS["back"][2]}}}}}\n'
+                f'  "add a bottle to the right" → {{"action":"spawn","object":"bottle","target":{{"x":{POSITION_KEYWORDS["right"][0]},"y":{POSITION_KEYWORDS["right"][1]},"z":{POSITION_KEYWORDS["right"][2]}}}}}\n'
                 f"{object_examples}"
                 '  "grasp" → {"action":"grasp"}\n'
                 '  "release" → {"action":"release"}\n'
