@@ -66,6 +66,8 @@ services:
     profiles: [ "ollama-agent", "openclaw-agent", "all" ]
     ports:
       - "80:80"
+    volumes:
+      - model_cache:/models/cache
     depends_on:
       - ros2
       - stt

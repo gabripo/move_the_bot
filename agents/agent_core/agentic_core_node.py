@@ -248,7 +248,8 @@ class AgenticCoreNode(Node):
                 y = float(target.get("y", MIDDLE[1]))
                 z = float(target.get("z", MIDDLE[2]))
                 self.spawned_objects[obj] = {"x": x, "y": y, "z": z}
-                self._pub_str(self.spawn_pub, json.dumps({"name": obj, "x": x, "y": y, "z": z}))
+                path = f"/models/builtin/{obj}.glb" if obj in BUILTIN_OBJECTS else ""
+                self._pub_str(self.spawn_pub, json.dumps({"name": obj, "path": path, "x": x, "y": y, "z": z}))
                 self._log(f"Action: spawn {obj} at ({x:.3f}, {y:.3f}, {z:.3f})")
             except (TypeError, ValueError) as e:
                 self._log(f"Action: bad spawn data → {e}")

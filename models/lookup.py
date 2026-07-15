@@ -23,9 +23,6 @@ def lookup(object_name: str):
     if not name:
         return None
 
-    if name in BUILTIN_MAP:
-            return (str(Path(__file__).parent / "builtin" / BUILTIN_MAP[name]), "builtin")
-
     cache_dir = _get_cache_dir()
     cache_key = hashlib.md5(name.encode()).hexdigest()
     for ext in [".glb", ".gltf"]:
@@ -39,5 +36,8 @@ def lookup(object_name: str):
         result = download_model(name, api_key, cache_dir)
         if result:
             return (result, "sketchfab")
+
+    if name in BUILTIN_MAP:
+        return (str(Path(__file__).parent / "builtin" / BUILTIN_MAP[name]), "builtin")
 
     return None

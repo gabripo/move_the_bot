@@ -18,9 +18,15 @@ class ObjectSpawnNode(Node):
         self.sub = self.create_subscription(String, "/object_spawn", self.on_spawn, 10)
         self.reset_sub = self.create_subscription(String, "/reset_command", self.reset_callback, 10)
         self.marker_pub = self.create_publisher(MarkerArray, "/visualization_marker_array", 10)
+        self.notify_pub = self.create_publisher(String, "/object_spawn_notify", 10)
         self.spawned_ids = {}
         self.next_id = 1
         self.get_logger().info("Object Spawn Node started")
+
+    @staticmethod
+    def _to_web_path(file_path):
+        idx = file_path.find("/models/")
+        return file_path[idx:] if idx >= 0 else ""
 
     def reset_callback(self, msg: String):
         if msg.data != "reset":
@@ -62,6 +68,11 @@ class ObjectSpawnNode(Node):
                 self._publish_error(f"No 3D model found for '{name}'")
                 return
             model_path, source = result
+
+        web_path = self._to_web_path(model_path) if model_path else ""
+        notify = String()
+        notify.data = json.dumps({"name": name, "path": web_path, "x": x, "y": y, "z": z})
+        self.notify_pub.publish(notify)
 
         self.spawned_ids[name] = self.spawned_ids.get(name, self.next_id)
         if self.spawned_ids[name] == self.next_id:

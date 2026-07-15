@@ -12,6 +12,7 @@ class RosbridgeClient {
 
     this.subscribeJointStates();
     this.subscribeObjectSpawn();
+    this.subscribeObjectSpawnNotify();
     this.subscribeAgentLog();
     this.subscribeMarkerArray();
   }
@@ -129,6 +130,24 @@ class RosbridgeClient {
       if (gripperPos !== undefined) {
         document.getElementById("grasp-status").textContent =
           gripperPos > 0.02 ? "closed" : "open";
+      }
+    });
+  }
+
+  subscribeObjectSpawnNotify() {
+    const topic = new ROSLIB.Topic({
+      ros: this.ros,
+      name: "/object_spawn_notify",
+      messageType: "std_msgs/String",
+    });
+    topic.subscribe((msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        if (this.viewer && data.name && data.x !== undefined) {
+          this.viewer.spawnObject(data.name, data.path || "", data.x, data.y, data.z);
+        }
+      } catch (e) {
+        this.addLogEntry(`Spawn notify error: ${e.message}`);
       }
     });
   }

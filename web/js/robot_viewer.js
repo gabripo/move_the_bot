@@ -208,7 +208,7 @@ class RobotViewer {
     }
 
     const label = this.createLabel(name, x, y, z);
-    const modelUrl = this._resolveModelUrl(name);
+    const modelUrl = modelPath || this._resolveModelUrl(name);
 
     if (modelUrl) {
       this._addModel(name, modelUrl, x, y, z, label);
