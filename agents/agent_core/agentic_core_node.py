@@ -38,7 +38,7 @@ POSITION_KEYWORDS = {
     "middle": MIDDLE,
 }
 
-SYSTEM_PROMPT = """You are a robot arm controller. Output ONLY valid JSON. No other text.
+SYSTEM_PROMPT = """You are a robot arm controller.
 
 ACTIONS:
   move_to  → {"action":"move_to","target":{"x":float,"y":float,"z":float}}
@@ -197,6 +197,7 @@ class AgenticCoreNode(Node):
             "system": SYSTEM_PROMPT,
             "stream": False,
             "temperature": 0.1,
+            "format": "json",
         }
         try:
             resp = requests.post(OLLAMA_URL, json=payload, timeout=30)
