@@ -30,11 +30,31 @@ WORKSPACE = {
     "z_min": 0.0, "z_max": 0.5,
 }
 
+POSITIONAL_QUALIFIERS = {
+    "left of": "left",
+    "to the left": "left",
+    "on the left": "left",
+    "right of": "right",
+    "to the right": "right",
+    "on the right": "right",
+    "front of": "front",
+    "in front": "front",
+    "back of": "back",
+    "behind": "back",
+    "above": "high",
+    "over": "high",
+    "below": "low",
+    "under": "low",
+    "bottom of": "bottom",
+    "top of": "top",
+}
+
 EXAMPLES = [
     ('"move to 0.2 0.1 0.3"', '{"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}'),
     ('"teleport the arm to the back"', '{"action":"move_to","target":{"x":0.0,"y":0.15,"z":-0.15}}'),
     ('"add a bottle to the right"', '{"action":"spawn","object":"bottle","target":{"x":0.15,"y":0.25,"z":0.15}}'),
     ('"create apple at center"', '{"action":"spawn","object":"apple","target":{"x":0.0,"y":0.25,"z":0.25}}'),
+    ('"spawn a bottle to the left of the apple"', '{"action":"spawn","object":"bottle","target":{"x":-0.15,"y":0.25,"z":0.15}}'),
     ('"grasp"', '{"action":"grasp"}'),
     ('"release"', '{"action":"release"}'),
     ('"do nothing"', '{"action":"none"}'),
@@ -60,6 +80,10 @@ WORKSPACE (Three.js frame: x=right, y=up, z=toward viewer):
 
 POSITION KEYWORDS (map to these coordinates):
 {POSITION_KEYWORDS_FORMATTED}
+
+POSITIONAL QUALIFIERS (common phrases mapped to keywords):
+{chr(10).join(f'  "{p}" -> {k}' for p, k in POSITIONAL_QUALIFIERS.items())}
+If the user uses an unfamiliar positional phrase, infer the intent and map to the closest keyword. Unknown directions default to center.
 
 RULES:
 - spawn: triggered by create/place/spawn/add/put/make + object name + optional position.

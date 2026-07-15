@@ -7,8 +7,8 @@ from geometry_msgs.msg import Point, PoseStamped
 from std_msgs.msg import Bool, Header, String
 
 from constants import (BUILTIN_OBJECTS, EXAMPLES, LLM_ONLY, MIDDLE,
-                       OLLAMA_MODEL, OLLAMA_URL, POSITION_KEYWORDS,
-                       SYSTEM_PROMPT)
+                       OLLAMA_MODEL, OLLAMA_URL, POSITIONAL_QUALIFIERS,
+                       POSITION_KEYWORDS, SYSTEM_PROMPT)
 
 
 def threejs_to_ik(x, y, z):
@@ -28,6 +28,17 @@ def find_object(text):
     return None
 
 
+def resolve_position(text):
+    t = text.lower()
+    for word, pos in POSITION_KEYWORDS.items():
+        if word in t:
+            return pos
+    for phrase, keyword in POSITIONAL_QUALIFIERS.items():
+        if phrase in t:
+            return POSITION_KEYWORDS[keyword]
+    return None
+
+
 def parse_voice_command(text, spawned_objects=None):
     t = text.lower().strip()
 
@@ -38,11 +49,7 @@ def parse_voice_command(text, spawned_objects=None):
             if len(nums) >= 3:
                 x, y, z = nums[0], nums[1], nums[2]
             else:
-                x, y, z = MIDDLE
-                for word, pos in POSITION_KEYWORDS.items():
-                    if word in t:
-                        x, y, z = pos
-                        break
+                x, y, z = resolve_position(t) or MIDDLE
             return {"action": "spawn", "object": obj, "target": {"x": x, "y": y, "z": z}}
 
     if re.search(r"\b(grab|grasp|pick)\b", t):
@@ -62,9 +69,9 @@ def parse_voice_command(text, spawned_objects=None):
             for name, pos in spawned_objects.items():
                 if name in t:
                     return {"action": "move_to", "target": dict(pos)}
-        for word, pos in POSITION_KEYWORDS.items():
-            if word in t:
-                return {"action": "move_to", "target": {"x": pos[0], "y": pos[1], "z": pos[2]}}
+        pos = resolve_position(t)
+        if pos:
+            return {"action": "move_to", "target": {"x": pos[0], "y": pos[1], "z": pos[2]}}
         if len(nums) == 1:
             return {"action": "move_to", "target": {"x": nums[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
         return {"action": "move_to", "target": {"x": MIDDLE[0], "y": MIDDLE[1], "z": MIDDLE[2]}}
@@ -155,8 +162,6 @@ class AgenticCoreNode(Node):
         voice = self.current_voice
         self.current_voice = None
 
-        self._log(f'Voice: "{voice}"')
-
         use_llm = LLM_ONLY or self.llm_only_toggle
         action = None
         if not use_llm:
@@ -182,6 +187,7 @@ class AgenticCoreNode(Node):
                 f'Voice: "{voice}"\n'
                 f"Available: {', '.join(BUILTIN_OBJECTS)}\n"
                 f"Position keywords: {' '.join(f'{k}=({v[0]},{v[1]},{v[2]})' for k, v in sorted(POSITION_KEYWORDS.items()))}\n"
+                f"Positional qualifiers: {', '.join(POSITIONAL_QUALIFIERS)}\n"
                 "Examples:\n"
                 + "\n".join(f'  {v} → {j}' for v, j in EXAMPLES)
                 + f"\n{obj_examples}"
