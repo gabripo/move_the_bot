@@ -37,6 +37,8 @@ services:
     profiles: [ "ollama-agent", "openclaw-agent", "all" ]
     ports:
       - "9090:9090"
+    env_file:
+      - ../secrets/env.sketchfab
     environment:
       <<: *common-env
       OLLAMA_URL: http://ollama:11434/api/generate
@@ -104,10 +106,11 @@ services:
       context: ../agents/openclaw_agent/plugin
       dockerfile: Dockerfile.openclaw
     container_name: spatial_hmi_openclaw
+    env_file:
+      - ../secrets/env.sketchfab
     environment:
       OPENCLAW_MODEL: ollama/llama3.2
       OLLAMA_BASE_URL: http://ollama:11434
-      SKETCHFAB_API_KEY: ${SKETCHFAB_API_KEY:-}
     volumes:
       - openclaw_data:/root/.openclaw
       - model_cache:/models/cache
