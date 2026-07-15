@@ -30,27 +30,30 @@ WORKSPACE = {
     "z_min": 0.0, "z_max": 0.5,
 }
 
-BREAKDOWN_PROMPT = (
-    "Split the user's command into separate simple commands. "
-    "Each simple command must describe exactly one action (spawn, move_to, grasp, release, none). "
-    'Use "and", "then", commas as split points. '
-    "Repeat any missing verbs so each command is self-contained. "
-    "Keep positional phrases (e.g. 'at its left', 'to the right', 'at center') attached to the sub-command they belong to. "
-    "Do NOT generate extra move_to commands that were not explicitly said."
-    " You MUST return a JSON array of plain text strings."
-    " Never return JSON objects or dicts. Only a flat array of strings."
-    "\nExamples:\n"
-    '  "move to the apple, then to the bottle"\n'
-    '    -> ["move to the apple", "move to the bottle"]\n'
-    '  "create an apple and a mug"\n'
-    '    -> ["create an apple", "create a mug"]\n'
-    '  "create an apple and a bottle at its left"\n'
-    '    -> ["create an apple", "create a bottle at its left"]\n'
-    '  "grasp the bottle"\n'
-    '    -> ["grasp"]\n'
-    '  "spawn a bottle and move it to the right"\n'
-    '    -> ["spawn a bottle", "move it to the right"]'
-)
+TOOL_DESCRIPTION = """
+The system automatically called these tools on your behalf:
+1. split_commands(voice) — split into sub-commands
+2. parse_command(text) — rule-based parse of each sub-command
+
+Sub-commands and their parse results are listed below.
+For any sub-command where parse_command returned null, you must generate the action yourself.
+Return ALL actions in a JSON array. Include every action for every sub-command."""
+
+SPLIT_PROMPT = """Split the voice command into separate individual sub-commands.
+A sub-command is one action (spawn, move, grasp, release).
+Split on commas and "and"/"then" conjunctions.
+Keep all positional words attached to their sub-command.
+Return ONLY a JSON array of plain strings, each string is one sub-command.
+
+Examples:
+"move to the apple then to the bottle" -> ["move to the apple", "move to the bottle"]
+"create an apple and a mug" -> ["create an apple", "create a mug"]
+"create an apple and a bottle at its left" -> ["create an apple", "create a bottle at its left"]
+"spawn an apple behind the robot, spawn a mug at bottom left, move to the apple" -> ["spawn an apple behind the robot", "spawn a mug at bottom left", "move to the apple"]
+"move to the apple, then to the bottle, then grasp it" -> ["move to the apple", "move to the bottle", "grasp"]
+"do nothing" -> ["do nothing"]"""
+
+
 
 POSITIONAL_QUALIFIERS = {
     "left of": "left",
@@ -125,4 +128,5 @@ RULES:
 - move_to: triggered by move/go/reach. Extract explicit x y z numbers if given,
   or use position keywords, or move to a named object.
 - grasp: triggered by grab/pick/take/get.
-- release: triggered by release/drop."""
+- release: triggered by release/drop.
+{TOOL_DESCRIPTION}"""
