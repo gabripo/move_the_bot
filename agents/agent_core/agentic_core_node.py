@@ -20,7 +20,7 @@ OLLAMA_MODEL = os.environ.get(
 #   llama3.1:8b                   (~4.5 GB RAM, better reasoning)
 #   llama3:70b-instruct-q2_K     (max capability, needs ~35 GB RAM)
 # Model tag reference: https://ollama.com/library/llama3.2/tags
-BUILTIN_OBJECTS = {"apple", "mug", "bottle", "cube", "sphere", "table", "can", "cylinder"}
+BUILTIN_OBJECTS = ["apple", "mug", "bottle", "cube", "sphere", "can", "cylinder", "table"]
 # All positions are in Three.js frame: x=right, y=up, z=forward
 MIDDLE = (0.0, 0.25, 0.25)
 
@@ -37,9 +37,61 @@ POSITION_KEYWORDS = {
     "middle": MIDDLE,
 }
 
-SYSTEM_PROMPT = """You are a robot arm controller. Output ONLY JSON.
-Actions: move_to, grasp, release, spawn, none.
-Workspace: x∈[-0.5,0.5], y∈[0.0,0.5], z∈[0.0,0.5]. Middle=(0.0,0.25,0.25)."""
+SYSTEM_PROMPT = """You are a robot arm controller. Output ONLY valid JSON. No other text.
+
+ACTIONS:
+  move_to  → {"action":"move_to","target":{"x":float,"y":float,"z":float}}
+  grasp    → {"action":"grasp"}
+  release  → {"action":"release"}
+  spawn    → {"action":"spawn","object":"name","target":{"x":float,"y":float,"z":float}}
+  none     → {"action":"none"}
+
+AVAILABLE OBJECTS: apple, mug, bottle, cube, sphere, can, cylinder, table
+
+WORKSPACE (Three.js frame: x=right, y=up, z=toward viewer):
+  x ∈ [-0.5, 0.5], y ∈ [0.0, 0.5], z ∈ [0.0, 0.5]
+  Center = (0.0, 0.25, 0.25)
+
+POSITION KEYWORDS (map to these coordinates):
+  "left"   → ( -0.15, 0.25, 0.15 )
+  "right"  → (  0.15, 0.25, 0.15 )
+  "front"  → (  0.0,  0.35, 0.15 )
+  "back"   → (  0.0,  0.15, -0.15)
+  "center" → (  0.0,  0.25, 0.25 )
+  "middle" → (  0.0,  0.25, 0.25 )
+  "high"   → (  0.0,  0.25, 0.45 )
+  "low"    → (  0.0,  0.25, 0.05 )
+
+RULES:
+- spawn: triggered by create/place/spawn/add/put/make + object name + optional position.
+  If position is a keyword like "right" or "left", use the coordinates above.
+  If position is "here" or unspecified, use the current Hand position.
+- move_to: triggered by move/go/reach. Extract explicit x y z numbers if given,
+  or use position keywords, or move to a named object.
+- grasp: triggered by grab/pick/take/get.
+- release: triggered by release/drop.
+
+EXAMPLES:
+  Voice: "move to 0.2 0.1 0.3"
+  JSON: {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}
+
+  Voice: "teleport the arm to the back"
+  JSON: {"action":"move_to","target":{"x":0.0,"y":0.15,"z":-0.15}}
+
+  Voice: "add a bottle to the right"
+  JSON: {"action":"spawn","object":"bottle","target":{"x":0.15,"y":0.25,"z":0.15}}
+
+  Voice: "create apple at center"
+  JSON: {"action":"spawn","object":"apple","target":{"x":0.0,"y":0.25,"z":0.25}}
+
+  Voice: "grasp"
+  JSON: {"action":"grasp"}
+
+  Voice: "release"
+  JSON: {"action":"release"}
+
+  Voice: "do nothing"
+  JSON: {"action":"none"}"""
 
 
 def threejs_to_ik(x, y, z):
@@ -62,29 +114,28 @@ def find_object(text):
 def parse_voice_command(text, spawned_objects=None):
     t = text.lower().strip()
 
-    spawn_keywords = ["create ", "spawn ", "place ", "make "]
-    for kw in spawn_keywords:
-        if kw in t:
-            obj = find_object(t)
-            if obj:
-                nums = extract_numbers(t)
-                if len(nums) >= 3:
-                    x, y, z = nums[0], nums[1], nums[2]
-                else:
-                    x, y, z = MIDDLE
-                    for word, pos in POSITION_KEYWORDS.items():
-                        if word in t:
-                            x, y, z = pos
-                            break
-                return {"action": "spawn", "object": obj, "target": {"x": x, "y": y, "z": z}}
-            return {"action": "none"}
+    spawn_keywords = ["create ", "spawn ", "place ", "make ", "add ", "put ", "set "]
+    spawn_matched = any(kw in t for kw in spawn_keywords)
+    if spawn_matched:
+        obj = find_object(t)
+        if obj:
+            nums = extract_numbers(t)
+            if len(nums) >= 3:
+                x, y, z = nums[0], nums[1], nums[2]
+            else:
+                x, y, z = MIDDLE
+                for word, pos in POSITION_KEYWORDS.items():
+                    if word in t:
+                        x, y, z = pos
+                        break
+            return {"action": "spawn", "object": obj, "target": {"x": x, "y": y, "z": z}}
 
     if re.search(r"\b(grab|grasp|pick)\b", t):
         return {"action": "grasp"}
     if re.search(r"\b(put|release|drop)\b", t):
         return {"action": "release"}
 
-    move_keywords = ["move", "go", "position"]
+    move_keywords = ["move", "go", "position", "teleport"]
     if any(kw in t for kw in move_keywords):
         nums = extract_numbers(t)
         if len(nums) >= 3:
@@ -191,10 +242,14 @@ class AgenticCoreNode(Node):
                 f"Hand: ({pos.x:.3f},{pos.y:.3f},{pos.z:.3f})\n"
                 f"{objects_info}"
                 f'Voice: "{voice}"\n'
+                "Position keywords: left=(-0.15,0.25,0.15) right=(0.15,0.25,0.15) "
+                "front=(0.0,0.35,0.15) back=(0.0,0.15,-0.15) center=middle=(0.0,0.25,0.25)\n"
+                "Available objects: apple, mug, bottle, cube, sphere, can, cylinder\n"
                 "Examples:\n"
                 '  "move to 0.2 0.1 0.3" → {"action":"move_to","target":{"x":0.2,"y":0.1,"z":0.3}}\n'
+                '  "teleport the arm to the back" → {"action":"move_to","target":{"x":0.0,"y":0.15,"z":-0.15}}\n'
+                '  "add a bottle to the right" → {"action":"spawn","object":"bottle","target":{"x":0.15,"y":0.25,"z":0.15}}\n'
                 f"{object_examples}"
-                '  "create apple" → {"action":"spawn","object":"apple","target":{"x":0,"y":0.25,"z":0.25}}\n'
                 '  "grasp" → {"action":"grasp"}\n'
                 '  "release" → {"action":"release"}\n'
                 "JSON:"
