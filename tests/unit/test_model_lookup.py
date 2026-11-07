@@ -94,6 +94,18 @@ def test_sketchfab_hit_mocked(monkeypatch, model_cache_dir):
         def content(self):
             return b"mock glb content"
 
+        # Streaming download support (sketchfab_client uses `with requests.get(..., stream=True)`)
+        headers = {"content-length": "16"}
+
+        def iter_content(self, chunk_size=8192):
+            yield b"mock glb content"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
     import requests
     monkeypatch.setattr(requests, "get", lambda url, **kw: MockResponse(url, **kw))
 
