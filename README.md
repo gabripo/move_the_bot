@@ -1,6 +1,40 @@
-# Spatial HMI Robotics
+# move_the_bot
 
-AI-powered spatial human-machine interface: control a simulated robotic arm using hand gestures, voice commands, or text prompts.
+**Tell a robot arm what to do: by voice, with your hands, or by typing.** A local AI agent turns *"create an apple and grab it"* into planned, collision-aware arm motions.
+
+[![Unit tests](https://github.com/gabripo/move_the_bot/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/gabripo/move_the_bot/actions/workflows/unit-tests.yml)
+![ROS 2 Humble](https://img.shields.io/badge/ROS%202-Humble-22314E)
+![MoveIt 2](https://img.shields.io/badge/MoveIt-2-1e88e5)
+![Ollama](https://img.shields.io/badge/LLM-Ollama%20(local)-000000)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+<!-- Demo: add docs/demo.gif (≈15 s: "create an apple" → "grab the apple") and uncomment the line below.
+<p align="center"><img src="docs/demo.gif" width="720" alt="Saying 'grab the apple' and the arm picks it up"></p>
+-->
+
+## What it does
+
+- **Three ways to give orders.** Speak (browser speech recognition, with a Whisper fallback), point with your hand (MediaPipe hand tracking), or type.
+- **An AI agent that plans the steps.** A local LLM (Ollama, llama3.2, no cloud) breaks a sentence into actions: *move*, *grasp*, *release*, *spawn object*. A deterministic command splitter handles multi-step orders before the LLM is even asked.
+- **Real robotics underneath.** ROS 2 and MoveIt 2 plan the arm's motion; the browser shows it live in 3D (Three.js), and RViz2 is available for engineers.
+- **Any object you can name.** Built-in objects (apple, mug, bottle, …) spawn instantly; anything else is fetched from Sketchfab as a 3D model under 5 MB and scaled to fit.
+- **Two agent back-ends, same robot.** A lightweight direct Ollama agent, or the OpenClaw agent framework, which is compatible with NVIDIA NemoClaw for deployment on NVIDIA hardware.
+
+## How it works
+
+```mermaid
+flowchart LR
+    U["You<br/>voice · gesture · text"] --> W["Web UI<br/>speech + hand tracking + 3D view"]
+    W -- rosbridge --> R["ROS 2"]
+    R --> A["AI agent<br/>command splitter + local LLM (Ollama)"]
+    A -- "move · grasp · release · spawn" --> R
+    R --> M["MoveIt 2<br/>motion planning"]
+    M --> R
+    R --> W
+    R -. unknown object .-> S["Sketchfab<br/>3D model download"]
+```
+
+Everything runs in Docker on one machine: `ollama`, `ros2`, `web`, `stt`, plus one or both agent stacks. Details are in [Launch options](#launch-options--differences--dependencies) and [PLAN_ARCHITECTURE.md](PLAN_ARCHITECTURE.md).
 
 ## Quick Start
 
@@ -169,7 +203,7 @@ See `PLAN_ARCHITECTURE.md` for full architecture documentation.
 python3 scripts/generate_placeholder_glbs.py
 
 # Run unit tests (no Docker needed)
-pip install pytest && pytest tests/unit/
+pip install pytest requests && pytest tests/unit/
 
 # Run integration tests (requires running stack)
 docker compose -f docker/docker-compose.yml --profile ollama-agent up -d
