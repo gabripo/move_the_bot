@@ -1,55 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Spatial HMI - Robotic Arm Control</title>
-  <link rel="stylesheet" href="css/style.css"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>move_the_bot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦾</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/examples/jsm/",
+        "three/examples/jsm/": "./vendor/three/examples/jsm/",
+        "urdf-loader": "./vendor/urdf-loader/src/URDFLoader.js"
+      }
+    }
+  </script>
 </head>
 <body>
-  <div id="container">
-    <div id="viewer"></div>
-    <div id="sidebar">
-      <h2>Input</h2>
-      <div id="text-input-area">
-        <input id="text-input" type="text" placeholder="Type a command... (e.g. 'move left')"/>
-        <button id="text-send">Send</button>
+  <main id="app">
+    <section id="stage" aria-label="3D view of the robot">
+      <div id="viewer"></div>
+      <div id="activity" role="status" aria-live="polite"></div>
+      <div id="hand-preview" hidden>
+        <video id="camera" autoplay playsinline muted></video>
+        <canvas id="hand-canvas"></canvas>
+        <span id="hand-status"></span>
       </div>
-      <button id="btn-camera" class="btn">Start Camera</button>
-      <button id="btn-mic" class="btn">Start Mic</button>
-      <button id="btn-reset" class="btn btn-danger">Reset Environment</button>
-      <button id="btn-clear-cache" class="btn btn-danger">Clear Model Cache</button>
-      <div id="llm-only-area" style="margin-top:8px">
-        <label><input type="checkbox" id="chk-llm-only"> LLM only (skip parser)</label>
+      <div id="views" role="group" aria-label="Camera view">
+        <button type="button" data-view="operator" aria-pressed="true" title="From behind the robot: its left is your left">Operator</button>
+        <button type="button" data-view="side" aria-pressed="false">Side</button>
+        <button type="button" data-view="front" aria-pressed="false">Front</button>
+        <button type="button" data-view="top" aria-pressed="false">Top</button>
+      </div>
+      <p id="view-hint">Drag to look around · scroll to zoom</p>
+    </section>
+
+    <aside id="panel">
+      <header>
+        <h1>move_the_bot</h1>
+        <p class="tagline">Tell the arm what to do: type, speak, or use your hand.</p>
+        <ul id="pills" aria-label="System status">
+          <li id="pill-ros" class="pill" title="Connection between this page and ROS">ROS</li>
+          <li id="pill-robot" class="pill" title="MoveIt and the arm controllers">Robot</li>
+          <li id="pill-llm" class="pill" title="Language model used when the built-in rules do not understand a command">Model</li>
+        </ul>
+      </header>
+
+      <form id="command-form" autocomplete="off">
+        <label for="command" class="sr-only">Command</label>
+        <input id="command" type="text" placeholder="e.g. put the apple on the cube" maxlength="300" />
+        <button id="mic" type="button" class="icon" title="Speak a command" aria-label="Speak a command" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+        </button>
+        <button id="send" type="submit">Send</button>
+      </form>
+      <div id="examples" aria-label="Example commands">
+        <button type="button">create an apple and a red cube</button>
+        <button type="button">put the apple on the cube</button>
+        <button type="button">move the cube to the left</button>
+        <button type="button">go home</button>
       </div>
 
-      <h2>Status</h2>
-      <div id="coords" class="stat"><span class="stat-label">Hand:</span> <span class="stat-value">--</span></div>
-      <div id="voice" class="stat"><span class="stat-label">Voice:</span> <span class="stat-value">--</span></div>
-      <div class="stat-sep">Joint Angles</div>
-      <div id="angle-base" class="stat"><span class="stat-label">θ₁ base:</span> <span class="stat-value">--</span></div>
-      <div id="angle-shoulder" class="stat"><span class="stat-label">θ₂ shoulder:</span> <span class="stat-value">--</span></div>
-      <div id="angle-elbow" class="stat"><span class="stat-label">θ₃ elbow:</span> <span class="stat-value">--</span></div>
-      <div class="stat-sep">End Effector</div>
-      <div id="ee-threejs" class="stat"><span class="stat-label">Three.js:</span> <span class="stat-value">--</span></div>
-      <div id="ee-ik" class="stat"><span class="stat-label">IK frame:</span> <span class="stat-value">--</span></div>
-      <div id="grasp-status" class="stat"><span class="stat-label">Gripper:</span> <span class="stat-value">open</span></div>
+      <div id="actions">
+        <button id="hand-toggle" type="button" aria-pressed="false" title="Steer the gripper with your hand in front of the webcam">
+          <span aria-hidden="true">✋</span> Hand control
+        </button>
+        <button id="btn-home" type="button">Home</button>
+        <button id="btn-clear" type="button">Clear table</button>
+        <button id="btn-stop" type="button" class="danger">Stop</button>
+      </div>
 
-      <h2>Object Log</h2>
-      <div id="log"></div>
-    </div>
-  </div>
+      <h2>Conversation</h2>
+      <div id="log" role="log" aria-live="polite"></div>
 
-  <video id="camera-feed" autoplay playsinline muted style="display:none"></video>
+      <dl id="facts">
+        <div><dt>Holding</dt><dd id="fact-holding">nothing</dd></div>
+        <div><dt>Gripper at</dt><dd id="fact-tool">–</dd></div>
+        <div><dt>Model</dt><dd id="fact-model">–</dd></div>
+      </dl>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" crossorigin="anonymous"></script>
-  <script src="js/coord.js?v=9"></script>
-  <script src="js/rosbridge_client.js?v=14"></script>
-  <script src="js/robot_viewer.js?v=18"></script>
-  <script src="js/perception.js?v=9"></script>
-  <script src="js/main.js?v=11"></script>
+      <details id="settings">
+        <summary>Settings</summary>
+        <label><input type="checkbox" id="llm-only" /> Always ask the language model (skip the built-in rules)</label>
+        <label><input type="checkbox" id="local-speech" /> Transcribe speech on this computer (Whisper container)</label>
+      </details>
+    </aside>
+  </main>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

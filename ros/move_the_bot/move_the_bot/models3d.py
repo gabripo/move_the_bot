@@ -1,0 +1,112 @@
+"""Find a 3D model (GLB file) to draw an object with.
+
+Order: the models shipped with the repo, then the download cache, then Sketchfab (only when a
+SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
+a missing model never blocks the robot.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+from pathlib import Path
+
+import requests
+
+SKETCHFAB_SEARCH = "https://api.sketchfab.com/v3/search"
+MAX_BYTES = 5 * 1024 * 1024
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
+def _name_score(query: str, model_name: str) -> int:
+    """How well a Sketchfab model title matches the requested object (higher is better)."""
+    q, n = query.strip().lower(), model_name.strip().lower()
+    if n == q:
+        return 100
+    words = re.split(r"[\s\-_]+", n)
+    if q not in words:
+        return 5 if q in n else 0
+    extra = len(words) - 1
+    return max(90 - extra * 5, 40) if words[-1] == q else max(70 - extra * 5, 20)
+
+
+def _download(model: dict, headers: dict, target: Path) -> bool:
+    try:
+        info = requests.get(f"https://api.sketchfab.com/v3/models/{model['uid']}/download",
+                            headers=headers, timeout=10)
+        info.raise_for_status()
+        url = (info.json().get("glb") or {}).get("url")
+        if not url:
+            return False
+        with requests.get(url, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            if int(r.headers.get("content-length", 0)) > MAX_BYTES:
+                return False
+            size, partial = 0, target.with_suffix(".part")
+            with open(partial, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    size += len(chunk)
+                    if size > MAX_BYTES:
+                        partial.unlink(missing_ok=True)
+                        return False
+                    f.write(chunk)
+            partial.rename(target)
+        return True
+    except (requests.RequestException, OSError, ValueError, KeyError):
+        return False
+
+
+def _from_sketchfab(name: str, api_key: str, target: Path) -> bool:
+    headers = {"Authorization": f"Token {api_key}"}
+    try:
+        r = requests.get(SKETCHFAB_SEARCH, headers=headers, timeout=10, params={
+            "q": name, "type": "models", "sort_by": "relevance", "downloadable": "true",
+            "archives_flavours": "glb", "count": 24})
+        r.raise_for_status()
+        results = r.json().get("results", [])
+    except (requests.RequestException, ValueError):
+        return False
+    ranked = sorted(results, key=lambda m: (-_name_score(name, m.get("name", "")), len(m.get("name", ""))))
+    for model in ranked[:8]:
+        if _name_score(name, model.get("name", "")) == 0:
+            break
+        if _download(model, headers, target):
+            return True
+    return False
+
+
+def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
+    """Web path of a GLB for `kind` ('/models/builtin/apple.glb'), or '' when there is none."""
+    slug = _slug(kind)
+    if not slug:
+        return ""
+    root = Path(models_dir)
+    if (root / "builtin" / f"{slug}.glb").is_file():
+        return f"/models/builtin/{slug}.glb"
+    cache_name = f"{slug}_{hashlib.md5(kind.encode()).hexdigest()[:8]}.glb"
+    cached = root / "cache" / cache_name
+    if cached.is_file() and cached.stat().st_size > 0:
+        return f"/models/cache/{cache_name}"
+    api_key = os.environ.get("SKETCHFAB_API_KEY", "").strip()
+    if allow_download and api_key:
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return ""
+        if _from_sketchfab(kind, api_key, cached):
+            return f"/models/cache/{cache_name}"
+    return ""
+
+
+def clear_cache(models_dir: str) -> int:
+    count = 0
+    for f in (Path(models_dir) / "cache").glob("*.glb"):
+        try:
+            f.unlink()
+            count += 1
+        except OSError:
+            pass
+    return count

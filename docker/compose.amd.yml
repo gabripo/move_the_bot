@@ -1,0 +1,9 @@
+# Give the Ollama container an AMD GPU on Linux (ROCm build of Ollama):
+#   docker compose -f docker-compose.yml -f docker/compose.amd.yml --profile ollama up
+# Not tested by the author of this file; see docs/hardware-and-gpus.md.
+services:
+  ollama:
+    image: ollama/ollama:rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri

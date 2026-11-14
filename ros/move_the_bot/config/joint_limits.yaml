@@ -1,0 +1,37 @@
+# Speed and acceleration limits MoveIt plans with. The position limits come from the URDF.
+# The values are gentle enough for the real STS3215 servos; `default_*_scaling_factor` slows
+# everything down further and is the first thing to lower on real hardware.
+default_velocity_scaling_factor: 1.0
+default_acceleration_scaling_factor: 1.0
+
+joint_limits:
+  shoulder_pan:
+    has_velocity_limits: true
+    max_velocity: 2.5
+    has_acceleration_limits: true
+    max_acceleration: 6.0
+  shoulder_lift:
+    has_velocity_limits: true
+    max_velocity: 2.5
+    has_acceleration_limits: true
+    max_acceleration: 6.0
+  elbow_flex:
+    has_velocity_limits: true
+    max_velocity: 2.5
+    has_acceleration_limits: true
+    max_acceleration: 6.0
+  wrist_flex:
+    has_velocity_limits: true
+    max_velocity: 3.0
+    has_acceleration_limits: true
+    max_acceleration: 8.0
+  wrist_roll:
+    has_velocity_limits: true
+    max_velocity: 3.0
+    has_acceleration_limits: true
+    max_acceleration: 8.0
+  gripper:
+    has_velocity_limits: true
+    max_velocity: 3.0
+    has_acceleration_limits: true
+    max_acceleration: 8.0

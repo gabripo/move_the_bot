@@ -1,0 +1,63 @@
+# move_the_bot: the whole demo in containers.
+#
+#   ./run.sh            start it (see ./run.sh --help for the options)
+#   docker compose up   the same, by hand: robot + web
+#
+# Optional parts are switched on with profiles:
+#   --profile ollama    a local language model in a container
+#   --profile voice     local speech-to-text (Whisper)
+
+services:
+  robot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ros
+    command: ["ros2", "launch", "move_the_bot", "bringup.launch.py", "hardware:=${HARDWARE:-mock}", "usb_port:=${USB_PORT:-/dev/ttyACM0}"]
+    ports:
+      - "9090:9090"            # rosbridge, for tools outside Docker
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      # Language model used when the built-in rules do not understand a command.
+      LLM_BACKEND: ${LLM_BACKEND:-ollama}                  # ollama | openai
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b-instruct-q4_K_M}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-${NVIDIA_API_KEY:-}}
+      OPENAI_MODEL: ${OPENAI_MODEL:-meta/llama-3.1-8b-instruct}
+      # Optional: download 3D models for objects that are not built in.
+      SKETCHFAB_API_KEY: ${SKETCHFAB_API_KEY:-}
+    volumes:
+      - model_cache:/models/cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets OLLAMA_URL point at Ollama on the host
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - model_cache:/models/cache:ro
+    depends_on:
+      - robot
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  stt:
+    profiles: ["voice"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stt
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  model_cache:

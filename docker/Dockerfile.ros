@@ -1,0 +1,46 @@
+# The robot side: ROS 2 Jazzy, ros2_control, MoveIt 2, the skill server and the language agent.
+# Builds for Intel/AMD (amd64) and for Apple Silicon / NVIDIA Jetson (arm64).
+FROM ros:jazzy-ros-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ros-jazzy-moveit-ros-move-group \
+      ros-jazzy-moveit-planners-ompl \
+      ros-jazzy-pilz-industrial-motion-planner \
+      ros-jazzy-moveit-simple-controller-manager \
+      ros-jazzy-moveit-kinematics \
+      ros-jazzy-moveit-configs-utils \
+      ros-jazzy-moveit-ros-visualization \
+      ros-jazzy-ros2-control \
+      ros-jazzy-ros2-controllers \
+      ros-jazzy-robot-state-publisher \
+      ros-jazzy-xacro \
+      ros-jazzy-rosbridge-server \
+      python3-numpy \
+      python3-requests \
+      python3-pytest \
+    && rm -rf /var/lib/apt/lists/*
+
+# Optional hardware back-ends: Isaac Sim (topic based) and the real SO-101 (Feetech servos).
+# They are not needed for the default simulated arm, so a missing package must not break the build.
+RUN apt-get update \
+    && (apt-get install -y --no-install-recommends ros-jazzy-joint-state-topic-hardware-interface \
+        || echo "joint_state_topic_hardware_interface not available: hardware:=isaac disabled") \
+    && (apt-get install -y --no-install-recommends ros-jazzy-feetech-ros2-driver \
+        || echo "feetech_ros2_driver not available: hardware:=real disabled") \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ros_ws
+COPY ros/move_the_bot src/move_the_bot
+RUN . /opt/ros/jazzy/setup.sh && colcon build --packages-select move_the_bot
+
+COPY models/builtin /models/builtin
+COPY tests /ros_ws/tests
+COPY docker/ros_entrypoint.sh /ros_entrypoint.sh
+RUN chmod +x /ros_entrypoint.sh && mkdir -p /models/cache
+
+ENV MODELS_DIR=/models \
+    PYTHONUNBUFFERED=1 \
+    RCUTILS_COLORIZED_OUTPUT=0
+
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["ros2", "launch", "move_the_bot", "bringup.launch.py"]

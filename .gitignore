@@ -1,10 +1,33 @@
+# Python
 __pycache__/
 *.pyc
+.pytest_cache/
+.venv/
+
+# ROS build output
+build/
+install/
+log/
+
+# Web libraries fetched by web/vendor.sh
+web/node_modules/
+web/vendor/
+web/package-lock.json
 node_modules/
-dist/
-.env
-secrets/
+
+# Downloaded 3D models
 models/cache/*
 !models/cache/.gitkeep
-*.egg-info/
-.oghma/
+
+# Local settings and secrets
+.env
+secrets/
+
+# Test output
+test-results/
+playwright-report/
+tests/e2e/node_modules/
+
+.DS_Store
+.vscode/
+.idea/

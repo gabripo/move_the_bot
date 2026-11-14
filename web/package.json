@@ -1,0 +1,10 @@
+{
+  "name": "move-the-bot-web",
+  "private": true,
+  "description": "Browser libraries of the move_the_bot web app, copied to vendor/ by vendor.sh so the app runs without a CDN.",
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.21",
+    "three": "0.170.0",
+    "urdf-loader": "0.13.1"
+  }
+}

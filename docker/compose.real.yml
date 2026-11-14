@@ -1,0 +1,7 @@
+# Added by ./run.sh --real: pass the SO-101's serial port into the robot container.
+services:
+  robot:
+    devices:
+      - "${USB_PORT:-/dev/ttyACM0}:${USB_PORT:-/dev/ttyACM0}"
+    group_add:
+      - dialout
