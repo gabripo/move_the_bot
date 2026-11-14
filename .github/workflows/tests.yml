@@ -1,0 +1,61 @@
+name: Tests
+
+# 1. Unit tests: language rules, world model, kinematics, LLM parsing (no ROS needed).
+# 2. End-to-end: the real containers. MoveIt plans, ros2_control executes, the browser drives.
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['docs/media/**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install numpy requests pytest
+      - run: python -m pytest tests/unit -v
+
+  end-to-end:
+    name: End-to-end (ROS 2 + MoveIt + browser)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      OLLAMA_URL: http://127.0.0.1:9     # no language model in CI: the built-in rules are tested
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the images
+        run: docker compose build robot web
+
+      - name: Start the robot and the web app
+        run: docker compose up -d robot web
+
+      - name: Robot test (skills, agent, teleoperation)
+        run: docker compose exec -T robot pytest -v -p no:cacheprovider /ros_ws/tests/e2e/test_robot.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Browser test
+        working-directory: tests/e2e
+        env:
+          CHECK_HAND_TRACKING: '1'
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node browser_test.mjs
+
+      - name: Logs (on failure)
+        if: failure()
+        run: docker compose logs --no-color --tail 400

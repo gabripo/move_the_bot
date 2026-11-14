@@ -10,10 +10,10 @@ install/
 log/
 
 # Web libraries fetched by web/vendor.sh
-web/node_modules/
+web/node_modules
 web/vendor/
 web/package-lock.json
-node_modules/
+node_modules
 
 # Downloaded 3D models
 models/cache/*
@@ -26,7 +26,7 @@ secrets/
 # Test output
 test-results/
 playwright-report/
-tests/e2e/node_modules/
+tests/e2e/node_modules
 
 .DS_Store
 .vscode/
