@@ -7,7 +7,8 @@
 //
 // Hand tracking runs in the browser with MediaPipe; no video leaves the computer.
 
-const LOCAL = "./vendor/mediapipe";
+// Resolved against the page, not this file: a bare "./vendor" in import() would mean js/vendor.
+const LOCAL = new URL("vendor/mediapipe", document.baseURI).href;
 const CDN_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm";
 const CDN_MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11],
