@@ -62,7 +62,11 @@ esac
 extra=()
 if [ "${HARDWARE:-mock}" = "real" ]; then
   # A real arm needs its serial port inside the container.
+  mkdir -p calibration
   extra=(-f docker-compose.yml -f docker/compose.real.yml)
+elif [ "${HARDWARE:-mock}" = "isaac" ]; then
+  # Isaac Sim runs on the host: the robot container joins the host network to share ROS topics.
+  extra=(-f docker-compose.yml -f docker/compose.isaac.yml)
 fi
 
 # (the ${x[@]+...} form keeps the old bash shipped with macOS happy when an array is empty)

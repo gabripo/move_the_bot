@@ -31,3 +31,6 @@ tests/e2e/node_modules
 .DS_Store
 .vscode/
 .idea/
+
+# Per-arm calibration of a real SO-101
+/calibration/

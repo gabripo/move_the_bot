@@ -1,0 +1,14 @@
+move_the_bot
+Copyright (c) 2026 gabripo. Licensed under the MIT License (see LICENSE).
+
+This repository includes third-party material:
+
+SO-101 robot arm description and meshes
+  ros/move_the_bot/robot/so101.urdf, robot/meshes/, robot/collision/
+  From https://github.com/TheRobotStudio/SO-ARM100, Copyright TheRobotStudio,
+  licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+  Changes: visual meshes simplified, convex collision meshes generated, ros2_control
+  description added in so101.urdf.xacro.
+
+JavaScript libraries (three.js, urdf-loader, MediaPipe Tasks Vision) are downloaded at build
+time by web/vendor.sh and keep their own licenses (MIT, Apache-2.0, Apache-2.0).

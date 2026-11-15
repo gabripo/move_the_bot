@@ -3,7 +3,7 @@
 Every motion here is really planned by MoveIt and executed by the arm controllers; only the
 hardware underneath is simulated. Run inside the robot container:
 
-    docker compose exec robot pytest -v /ros_ws/tests/e2e/test_robot.py
+    docker compose exec robot /ros_entrypoint.sh pytest -v /ros_ws/tests/e2e/test_robot.py
 """
 import json
 import math

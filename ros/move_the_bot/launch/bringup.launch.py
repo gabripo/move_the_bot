@@ -24,16 +24,26 @@ from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
+DEFAULT_CALIBRATION = "/calibration/so101.yaml"
+
+
 def _setup(context):
     share = get_package_share_directory("move_the_bot")
     hardware = LaunchConfiguration("hardware").perform(context)
     usb_port = LaunchConfiguration("usb_port").perform(context)
+    calibration = LaunchConfiguration("calibration").perform(context)
+    if not calibration and os.path.isfile(DEFAULT_CALIBRATION):
+        calibration = DEFAULT_CALIBRATION      # mounted by docker/compose.real.yml
 
     moveit = (
         MoveItConfigsBuilder("so101", package_name="move_the_bot")
         .robot_description(
             file_path="robot/so101.urdf.xacro",
-            mappings={"hardware": hardware, "usb_port": usb_port},
+            mappings={
+                "hardware": hardware,
+                "usb_port": usb_port,
+                "joint_config_file": calibration,
+            },
         )
         .robot_description_semantic(file_path="config/so101.srdf")
         .robot_description_kinematics(file_path="config/kinematics.yaml")
@@ -133,6 +143,11 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "usb_port", default_value="/dev/ttyACM0", description="Serial port of the real arm."
+            ),
+            DeclareLaunchArgument(
+                "calibration",
+                default_value="",
+                description="YAML file with the real arm's servo calibration (see config/so101_calibration.example.yaml).",
             ),
             DeclareLaunchArgument(
                 "agent", default_value="true", description="Start the language agent in this launch."

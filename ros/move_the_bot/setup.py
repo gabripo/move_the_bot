@@ -27,6 +27,7 @@ setup(
         "console_scripts": [
             "skill_server = move_the_bot.skill_server:main",
             "agent = move_the_bot.agent_node:main",
+            "joint_echo = move_the_bot.joint_echo:main",
         ],
     },
 )

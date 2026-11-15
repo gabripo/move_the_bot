@@ -41,7 +41,7 @@ jobs:
         run: docker compose up -d robot web
 
       - name: Robot test (skills, agent, teleoperation)
-        run: docker compose exec -T robot pytest -v -p no:cacheprovider /ros_ws/tests/e2e/test_robot.py
+        run: docker compose exec -T robot /ros_entrypoint.sh pytest -v -p no:cacheprovider /ros_ws/tests/e2e/test_robot.py
 
       - uses: actions/setup-node@v4
         with:
@@ -55,6 +55,16 @@ jobs:
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
           node browser_test.mjs
+
+      # The same stack with the Isaac Sim hardware interface: joint commands go out on a topic,
+      # joint states come back on another. A small node stands in for Isaac Sim.
+      - name: Isaac Sim interface test (topic-based hardware)
+        run: |
+          docker compose down
+          HARDWARE=isaac docker compose up -d robot
+          docker compose exec -d robot /ros_entrypoint.sh ros2 run move_the_bot joint_echo
+          docker compose exec -T robot /ros_entrypoint.sh pytest -v -p no:cacheprovider /ros_ws/tests/e2e/test_robot.py \
+            -k "starts_at_home or pick_and_place or stack_one or plans_around or teleoperation_grabs"
 
       - name: Logs (on failure)
         if: failure()

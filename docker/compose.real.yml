@@ -1,7 +1,10 @@
 # Added by ./run.sh --real: pass the SO-101's serial port into the robot container.
+# If ./calibration/so101.yaml exists it is used as the arm's calibration (docs/real-hardware.md).
 services:
   robot:
     devices:
       - "${USB_PORT:-/dev/ttyACM0}:${USB_PORT:-/dev/ttyACM0}"
     group_add:
       - dialout
+    volumes:
+      - ./calibration:/calibration:ro
