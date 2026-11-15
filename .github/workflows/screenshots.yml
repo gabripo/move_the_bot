@@ -4,7 +4,7 @@ name: Screenshots
 # always shows the current state. Every frame is a real run: MoveIt plans, ros2_control executes.
 on:
   push:
-    branches: [main, master, so101-ros2-control]
+    branches: [main, master]
     paths:
       - 'web/**'
       - 'ros/**'

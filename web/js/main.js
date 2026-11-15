@@ -58,7 +58,7 @@ ros.subscribe("/agent_log", "std_msgs/String", (msg) => {
     const entry = JSON.parse(msg.data);
     addEntry(entry.role, entry.text);
   } catch { addEntry("info", msg.data); }
-});
+}, { queue: 100 });
 
 // ----------------------------------------------------------------- status
 
@@ -83,7 +83,7 @@ ros.subscribe("/scene/objects", "std_msgs/String", (msg) => {
   try {
     window.mtb.objects = JSON.parse(msg.data).objects || [];
     viewer.setObjects(window.mtb.objects);
-  } catch { /* ignore a bad message */ }
+  } catch (e) { console.error("scene update failed", e); }
 }, { latched: true });
 
 ros.subscribe("/skill/state", "std_msgs/String", (msg) => {
@@ -137,7 +137,7 @@ ros.subscribe("/skill/status", "std_msgs/String", (msg) => {
   } else {
     showActivity(escapeHtml((status.message || "done").replace(/^./, (c) => c.toUpperCase())), "", 1500);
   }
-});
+}, { queue: 50 });
 
 // ------------------------------------------------------------------ voice
 

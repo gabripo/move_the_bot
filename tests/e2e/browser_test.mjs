@@ -35,6 +35,9 @@ await check("the 3D robot follows the joint states from ROS", async () => {
 await check("a typed command creates objects in the 3D scene", async () => {
   await sayAndWait(page, "create an apple and a red cube on the left");
   assert.ok(await object(page, "apple"), "no apple in the scene data");
+  // Drawing follows the data a few frames later, and frames are slow without a GPU: wait for it.
+  await page.waitForFunction(() => window.mtb.viewer.objects.size === 2
+    && document.querySelectorAll(".object-label").length === 2, null, { timeout: 30000 });
   const drawn = await page.evaluate(() => [...window.mtb.viewer.objects.keys()]);
   assert.deepEqual(drawn.sort(), ["apple", "red cube"]);
   const labels = await page.$$eval(".object-label", (els) => els.map((e) => e.textContent).sort());
@@ -46,8 +49,10 @@ await check("pick and place from the browser, with the conversation shown", asyn
   const apple = await object(page, "apple"), cube = await object(page, "red cube");
   assert.ok(Math.hypot(apple.position[0] - cube.position[0], apple.position[1] - cube.position[1]) < 0.012);
   assert.ok(apple.position[2] > cube.position[2]);
+  await page.waitForFunction(() => [...document.querySelectorAll("#log .entry.robot")]
+    .some((e) => /Put the apple on the red cube/.test(e.textContent)), null, { timeout: 30000 }).catch(() => {});
   const log = await page.$$eval("#log .entry", (els) => els.map((e) => `${e.className}: ${e.textContent}`));
-  assert.ok(log.some((l) => l.includes("user") && l.includes("put the apple on the cube")));
+  assert.ok(log.some((l) => l.includes("user") && l.includes("put the apple on the cube")), log.join(" | "));
   assert.ok(log.some((l) => l.includes("robot") && /Put the apple on the red cube/.test(l)), log.join(" | "));
 });
 

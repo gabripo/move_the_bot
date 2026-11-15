@@ -50,13 +50,15 @@ export class Ros {
   }
 
   _sendSubscribe(topic, s) {
-    const message = { op: "subscribe", topic, type: s.type, throttle_rate: s.throttle, queue_length: 1 };
+    const message = { op: "subscribe", topic, type: s.type, throttle_rate: s.throttle, queue_length: s.queue };
     if (s.latched) message.qos = { durability: "transient_local", depth: 1 };
     this._send(message);
   }
 
-  subscribe(topic, type, callback, { throttle = 0, latched = false } = {}) {
-    const s = { type, callback, throttle, latched };
+  // queue: how many messages rosbridge keeps for a slow browser. 1 suits state topics (only the
+  // newest matters); event topics such as the conversation need more, or lines get lost.
+  subscribe(topic, type, callback, { throttle = 0, latched = false, queue = 1 } = {}) {
+    const s = { type, callback, throttle, latched, queue };
     this.subscriptions.set(topic, s);
     if (this.connected) this._sendSubscribe(topic, s);
   }
