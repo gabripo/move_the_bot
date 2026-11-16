@@ -1,0 +1,204 @@
+// Recording mode: open the page with ?rec to record a demo that explains itself with the sound
+// off. Big captions say what was asked and what happened; a live diagram lights up the part of
+// the system that is working (the browser, the ROS 2 "brain", the language model on another
+// computer, the arm); the webcam shows the person in a round bubble.
+//
+// Keys (when the command box is not focused):
+//   S  set the scene: clear the table and create the objects for the demo (not captioned)
+//   R  ready for a take: clear captions and show the opening title
+//   E  show or hide the closing card          H  hand control on/off
+//   M  speak a command                         Esc  stop the arm
+//
+// URL options: hook=…&hook2=… (opening title), setup=… (objects for S, ";" between commands),
+// desk=0 (plain table instead of a desk), llmpc=… (where the language model runs).
+
+const $ = (id) => document.getElementById(id);
+const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
+const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
+const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️" };
+
+export class Recording {
+  constructor({ ros, viewer, params, actions }) {
+    this.ros = ros;
+    this.actions = actions;
+    this.sources = new Map();         // command text -> how it was given
+    this.quiet = new Set();           // setup commands: not captioned
+    this.muted = false;
+    this.teleop = false;
+    this.settle = null;
+    this.hookTimer = null;
+    this.llmPc = params.get("llmpc") || "my gaming PC";
+    this.setup = (params.get("setup") || "clear the table;create a mug, a soda can and an apple")
+      .split(";").map((s) => s.trim()).filter(Boolean);
+
+    document.body.classList.add("rec");
+    $("rec").hidden = false;
+    $("rec-hook-1").textContent = params.get("hook") || "I talk to a robot arm. It understands.";
+    $("rec-hook-2").textContent = params.get("hook2") || "Voice, text or my hand · the AI runs on my own GPU";
+    if (params.get("desk") !== "0") {
+      viewer.setDesk(true);
+      viewer.setView("desk");
+    }
+
+    // Keep the 3D view clear of the captions and the diagram.
+    new ResizeObserver(() => {
+      document.body.style.setProperty("--rec-h", `${$("rec-bottom").offsetHeight}px`);
+    }).observe($("rec-bottom"));
+
+    this._camera();
+    ros.subscribe("/agent_log", "std_msgs/String", (msg) => {
+      try { this._log(JSON.parse(msg.data)); } catch { /* not JSON: nothing to show */ }
+    }, { queue: 100 });
+    ros.subscribe("/skill/status", "std_msgs/String", (msg) => {
+      try { this._status(JSON.parse(msg.data)); } catch { /* ignore */ }
+    }, { queue: 50 });
+    this.llmRest = "only when the rules don't understand";
+    ros.subscribe("/agent/state", "std_msgs/String", (msg) => {
+      try {
+        const state = JSON.parse(msg.data);
+        if (!state.model) return;
+        this.llmRest = `${state.model.replace(/-instruct.*$/, "")} · only when needed`;
+        if ($("flow-llm").className === "node llm") $("flow-llm-model").textContent = this.llmRest;
+      } catch { /* ignore */ }
+    }, { latched: true });
+    window.addEventListener("keydown", (e) => this._key(e));
+    this.ready();
+  }
+
+  // The page tells us how a command was given, before sending it.
+  source(text, how) { this.sources.set(norm(text), how); }
+
+  setTeleop(on) {
+    this.teleop = on;
+    $("rec-bubble").classList.toggle("off", on);     // the hand-tracking preview takes its place
+    if (on) {
+      this._hideHook(1500);
+      this._caption("✋ Hand control", "The gripper follows my hand · pinch to grab, open to let go");
+      this._flow({ you: ["on", "✋ hand, tracked in the browser"],
+        brain: ["on", "inverse kinematics, 15 times a second"],
+        llm: ["skip", "not needed"], arm: ["on", "following the hand"] });
+    } else {
+      this._flow({});
+      this._caption("", "");
+    }
+  }
+
+  ready() {
+    this._caption("", "");
+    this._flow({});
+    $("rec-end").hidden = true;
+    clearTimeout(this.hookTimer);
+    $("rec-hook").classList.remove("hide");
+  }
+
+  // ------------------------------------------------------------------ events
+
+  _log(entry) {
+    const text = entry.text || "";
+    if (entry.role === "user") {
+      const key = norm(text);
+      if (this.quiet.has(key)) { this.quiet.delete(key); this.muted = true; return; }
+      this.muted = false;
+      if (key === "stop") { this._caption("🛑 “Stop”", "Stopped at once"); return; }
+      let how = this.sources.get(key) || "text";
+      if (this.teleop && how === "voice") how = "voice+hand";
+      this.sources.delete(key);
+      this._hideHook(2500);
+      this._caption(`${ICONS[how] || ""} “${text}”`, "");
+      this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button" }[how] || "typed"] });
+      return;
+    }
+    if (this.muted) return;
+    if (entry.role === "info" && text.startsWith("Understood by the rules")) {
+      this._flow({ brain: ["on", "rules: understood instantly"], llm: ["skip", "not needed"] }, true);
+      this._sub("Understood instantly by built-in rules, no AI needed");
+    } else if (entry.role === "info" && text.startsWith("Asking the language model")) {
+      this.llmStart = performance.now();
+      this._flow({ brain: ["done", "rules: no match → ask the LLM"], llm: ["on", "thinking on the GPU…"] }, true);
+      this._sub(`No rule matches → asking the open LLM on ${this.llmPc}…`, "llm");
+    } else if (entry.role === "info" && text.startsWith("Model plan")) {
+      const took = (text.match(/\(([\d.]+) s\)/) || [])[1];
+      const plan = text.replace(/^Model plan \([^)]*\):\s*/, "");
+      this._flow({ llm: ["done", `planned in ${took} s`] }, true);
+      this._sub(`The open LLM on ${this.llmPc} planned it in ${took} s: ${plan}`, "llm");
+    } else if (entry.role === "error") {
+      this._sub(text, "error");
+    }
+  }
+
+  _status(status) {
+    if (this.muted || status.skill === "stop") return;
+    const what = (status.description || status.skill || "").trim();
+    clearTimeout(this.settle);
+    if (status.state === "running") {
+      const moving = MOTION.has(status.skill);
+      this._flow({
+        brain: ["on", moving ? `${what}: inverse kinematics → MoveIt 2 path` : `${what}`],
+        arm: moving ? ["on", "moving · simulated"] : ["", "simulated"],
+      }, true);
+    } else {
+      this._flow({ brain: ["done", status.state === "succeeded" ? `${what}: done` : `${what}: ${status.state}`],
+        arm: ["done", "simulated"] }, true);
+      // Back to rest a moment after the last step, unless the hand is steering.
+      this.settle = setTimeout(() => { if (!this.teleop) this._flow({}); }, 2500);
+    }
+  }
+
+  _key(e) {
+    if (e.key === "Escape") { this.actions.stop(); return; }
+    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === "s") {
+      this.setup.forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
+      this.ready();
+    } else if (key === "r") this.ready();
+    else if (key === "e") { $("rec-end").hidden = !$("rec-end").hidden; this._hideHook(0); }
+    else if (key === "h") this.actions.toggleHand();
+    else if (key === "m") this.actions.toggleMic();
+    else return;
+    e.preventDefault();
+  }
+
+  // ------------------------------------------------------------------ drawing
+
+  async _camera() {
+    try {
+      $("rec-cam").srcObject = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: "user" } });
+    } catch {
+      $("rec-bubble").classList.add("off");          // no camera: no bubble
+    }
+  }
+
+  _hideHook(after) {
+    clearTimeout(this.hookTimer);
+    this.hookTimer = setTimeout(() => $("rec-hook").classList.add("hide"), after);
+  }
+
+  _caption(main, sub) {
+    $("rec-caption-main").textContent = main;
+    this._sub(sub);
+  }
+
+  _sub(text, kind = "") {
+    $("rec-caption-sub").textContent = text;
+    $("rec-caption-sub").className = kind;
+  }
+
+  // nodes: {you|brain|llm|arm: [state, text]}; others go back to rest unless `keep`.
+  _flow(nodes, keep = false) {
+    const rest = { you: "voice · text · hand", brain: "rules · inverse kinematics · MoveIt 2",
+      llm: this.llmRest, arm: "simulated" };
+    for (const name of ["you", "brain", "llm", "arm"]) {
+      const el = $(`flow-${name}`);
+      const span = el.querySelector("span");
+      if (nodes[name]) {
+        el.className = `node ${name} ${nodes[name][0]}`.trim();
+        span.textContent = nodes[name][1];
+      } else if (!keep) {
+        el.className = `node ${name}`;
+        span.textContent = rest[name];
+      }
+    }
+  }
+}

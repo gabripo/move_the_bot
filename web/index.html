@@ -34,6 +34,37 @@
         <button type="button" data-view="top" aria-pressed="false">Top</button>
       </div>
       <p id="view-hint">Drag to look around · scroll to zoom</p>
+
+      <!-- Recording mode (?rec): what is happening, readable with the sound off. See recording.js. -->
+      <div id="rec" hidden>
+        <div id="rec-hook"><strong id="rec-hook-1"></strong><span id="rec-hook-2"></span></div>
+        <div id="rec-bubble"><video id="rec-cam" autoplay playsinline muted></video></div>
+        <div id="rec-bottom">
+          <div id="rec-caption">
+            <div id="rec-caption-main"></div>
+            <div id="rec-caption-sub"></div>
+          </div>
+          <div id="rec-flow">
+            <div class="node you" id="flow-you"><small>Laptop · browser</small><b>You</b><span>voice · text · hand</span></div>
+            <i class="arrow">→</i>
+            <div class="node brain" id="flow-brain"><small>Laptop · ROS 2 in Docker</small><b>Robot brain</b><span>rules · inverse kinematics · MoveIt 2</span></div>
+            <i class="arrow">→</i>
+            <div class="node arm" id="flow-arm"><small>ros2_control · 100 Hz</small><b>SO-101 arm</b><span>simulated</span></div>
+            <i class="arrow down">⇅</i>
+            <div class="node llm" id="flow-llm"><small>Gaming PC · AMD GPU</small><b>Open LLM, at home</b><span id="flow-llm-model">only when the rules don't understand</span></div>
+          </div>
+        </div>
+        <div id="rec-end" hidden>
+          <h2>Simulated today. Real hardware next.</h2>
+          <div class="tiles">
+            <div><b>✅ Simulated SO-101</b><span>running now, on a laptop</span></div>
+            <div><b>⚙️ NVIDIA Isaac Sim</b><span>interface ready and tested</span></div>
+            <div><b>🦾 Real SO-101 arm</b><span>same code: <code>./run.sh --real</code></span></div>
+          </div>
+          <p>ROS 2 · MoveIt 2 · ros2_control · an open LLM on my own GPU</p>
+          <p class="url">github.com/gabripo/move_the_bot</p>
+        </div>
+      </div>
     </section>
 
     <aside id="panel">
