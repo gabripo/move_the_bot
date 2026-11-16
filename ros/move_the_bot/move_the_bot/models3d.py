@@ -1,7 +1,7 @@
 """Find a 3D model (GLB file) to draw an object with.
 
-Order: the models shipped with the repo, then the download cache, then Sketchfab (only when a
-SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
+Order: your own models (models/local, never committed), the models shipped with the repo, then
+the download cache, then Sketchfab (only when a SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
 a missing model never blocks the robot.
 """
 from __future__ import annotations
@@ -84,8 +84,9 @@ def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
     if not slug:
         return ""
     root = Path(models_dir)
-    if (root / "builtin" / f"{slug}.glb").is_file():
-        return f"/models/builtin/{slug}.glb"
+    for folder in ("local", "builtin"):
+        if (root / folder / f"{slug}.glb").is_file():
+            return f"/models/{folder}/{slug}.glb"
     cache_name = f"{slug}_{hashlib.md5(kind.encode()).hexdigest()[:8]}.glb"
     cached = root / "cache" / cache_name
     if cached.is_file() and cached.stat().st_size > 0:

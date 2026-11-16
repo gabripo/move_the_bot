@@ -34,6 +34,7 @@ COPY ros/move_the_bot src/move_the_bot
 RUN . /opt/ros/jazzy/setup.sh && colcon build --packages-select move_the_bot
 
 COPY models/builtin /models/builtin
+COPY models/local /models/local
 COPY tests /ros_ws/tests
 COPY docker/ros_entrypoint.sh /ros_entrypoint.sh
 RUN chmod +x /ros_entrypoint.sh && mkdir -p /models/cache
