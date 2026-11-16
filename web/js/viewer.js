@@ -365,7 +365,7 @@ export class Viewer {
         if (points) {
           // Points leave gaps and cast no shadow. The basic shape stays inside them, a little
           // smaller, in the model's darkest colour: the gaps show the object, not the table.
-          shape.scale.setScalar(0.93);
+          shape.scale.setScalar(0.85);            // well inside: a splat's surface is a little blurred
           shape.material.color.copy(this._darkColour(points.geometry));
           shape.material.roughness = 0.35;
         } else {
