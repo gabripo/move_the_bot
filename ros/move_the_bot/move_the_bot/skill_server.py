@@ -468,7 +468,9 @@ class SkillServer(Node):
         coloured = len(words) > 1 and words[0] in COLORS
         kind = canonical_kind(" ".join(words[1:]) if coloured else description)
         spec = CATALOGUE.get(kind)
-        radius = 0.5 * max(spec["size"][:2]) if spec else 0.025
+        # An object scanned with the webcam keeps the size it was given when it was scanned.
+        scanned = None if coloured else models3d.scanned_size(kind, self.models_dir)
+        radius = 0.5 * max((scanned or (spec and spec["size"]) or (0.05, 0.05))[:2])
         with self.lock:
             if len(self.world.objects) >= 16:
                 raise SkillError("the table is full; remove something first")
@@ -479,7 +481,7 @@ class SkillServer(Node):
         # "red cube": the plain shape in that colour. "apple": a detailed model if there is one.
         model = "" if coloured else models3d.find_model(kind, self.models_dir)
         with self.lock:
-            obj = self.world.add(description, x, y, on=on, model=model)
+            obj = self.world.add(description, x, y, on=on, model=model, size=scanned)
         self._scene_add(obj)
         self._publish_scene()
         return f"created {obj.name}"

@@ -1,5 +1,6 @@
 import { HandControl, fakeHand } from "./hand.js";
 import { Recording } from "./recording.js";
+import { Scanner } from "./scan.js";
 import { Ros } from "./ros.js";
 import { Speech } from "./speech.js";
 import { Viewer } from "./viewer.js";
@@ -215,6 +216,12 @@ Object.assign(window.mtb, {
   ready: () => ros.connected && robotReady && !!viewer.robot,
   teleop: (on) => { setTeleop(on); if (on) { hand.mapper.reset(); $("hand-status").textContent = "Following your hand. Pinch to grab."; } },
   feedHand: (options) => hand.feed(options ? fakeHand(options) : null),
+});
+
+// The object scanner: its button only appears when the scan service runs (./run.sh --scan).
+new Scanner({
+  send: (text) => { rec?.source(text, "scan"); send(text); },
+  onEvent: (state, info) => rec?.scan(state, info),
 });
 
 if (params.has("rec")) {

@@ -82,7 +82,20 @@ def splat_to_points(v: dict[str, np.ndarray], min_opacity: float = 0.12,
     return points.astype(np.float32), colour
 
 
+def real_size(points: np.ndarray, height: float) -> tuple[float, float, float]:
+    """Width, depth and height in metres of an object `height` metres tall (a single photo does
+    not tell how big something is). In the robot's frame: x = points' x, y = -z, z = y."""
+    extent = points.max(0) - points.min(0)
+    scale = height / max(float(extent[1]), 1e-6)
+    return float(extent[0] * scale), float(extent[2] * scale), float(height)
+
+
 def write_glb(path: Path, points: np.ndarray, srgb: np.ndarray) -> None:
+    """Write glb_bytes() to a file."""
+    path.write_bytes(glb_bytes(points, srgb))
+
+
+def glb_bytes(points: np.ndarray, srgb: np.ndarray) -> bytes:
     """A glTF binary with one point cloud (mode 0) and its vertex colours."""
     linear = np.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
     rgba = np.concatenate([np.round(linear * 255), np.full((len(points), 1), 255)], 1).astype(np.uint8)
@@ -107,7 +120,7 @@ def write_glb(path: Path, points: np.ndarray, srgb: np.ndarray) -> None:
     text += b" " * (-len(text) % 4)
     blob += b"\0" * (-len(blob) % 4)
     chunks = struct.pack("<II", len(text), 0x4E4F534A) + text + struct.pack("<II", len(blob), 0x004E4942) + blob
-    path.write_bytes(struct.pack("<III", 0x46546C67, 2, 12 + len(chunks)) + chunks)
+    return struct.pack("<III", 0x46546C67, 2, 12 + len(chunks)) + chunks
 
 
 def run_idol(image: Path, gaussians: str, seed: int, folder: Path) -> Path:

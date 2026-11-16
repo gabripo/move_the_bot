@@ -6,6 +6,7 @@
 # Optional parts are switched on with profiles:
 #   --profile ollama    a local language model in a container
 #   --profile voice     local speech-to-text (Whisper)
+#   --profile scan      the object scanner: webcam photo -> 3D object (Idol)
 
 services:
   robot:
@@ -49,6 +50,21 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  scan:
+    profiles: ["scan"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.scan
+    environment:
+      IDOL_BACKEND: ${IDOL_BACKEND:-demo}           # demo | local | remote | file, see docker/scan_server.py
+      IDOL_URL: ${IDOL_URL:-}                       # with remote: a scan server on a GPU PC
+      IDOL_GAUSSIANS: ${IDOL_GAUSSIANS:-262144}
+      IDOL_FILE: ${IDOL_FILE:-}                     # with file: always this splat
+      HF_TOKEN: ${HF_TOKEN:-}                       # optional: a larger quota on Idol's public demo
+    volumes:
+      - model_cache:/models/cache                   # the robot and the web app see new models at once
     restart: unless-stopped
 
   stt:

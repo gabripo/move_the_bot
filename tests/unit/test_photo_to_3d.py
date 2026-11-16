@@ -71,3 +71,10 @@ def test_writes_a_point_cloud_glb(tmp_path):
     assert kind == 0x4E4F534A and primitive["mode"] == 0
     assert doc["accessors"][primitive["attributes"]["POSITION"]]["count"] == len(points)
     assert doc["accessors"][primitive["attributes"]["COLOR_0"]]["normalized"] is True
+
+
+def test_real_size_follows_the_height_you_give(tmp_path):
+    points, _ = photo_to_3d.splat_to_points(photo_to_3d.read_ply(splat(tmp_path)), yaw_degrees=0)
+    width, depth, height = photo_to_3d.real_size(points, 0.1)
+    assert height == 0.1
+    assert width == pytest.approx(0.075, abs=0.006) and depth == pytest.approx(0.075, abs=0.006)
