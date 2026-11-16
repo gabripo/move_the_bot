@@ -1,4 +1,5 @@
 import { HandControl, fakeHand } from "./hand.js";
+import { Recording } from "./recording.js";
 import { Ros } from "./ros.js";
 import { Speech } from "./speech.js";
 import { Viewer } from "./viewer.js";
@@ -9,6 +10,7 @@ const wsUrl = params.get("ws")
   || `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${location.pathname.replace(/[^/]*$/, "")}ws/`;
 
 const ros = new Ros(wsUrl);
+let rec = null;                 // recording mode (?rec), set up at the end
 const viewer = new Viewer($("viewer"));
 // Handles for automated tests and for recording demos without a camera (filled in below).
 window.mtb = { ros, viewer, objects: [], state: {}, agent: {} };
@@ -43,6 +45,7 @@ function send(text) {
 
 $("command-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  rec?.source($("command").value, "text");
   send($("command").value);
   $("command").value = "";
 });
@@ -142,7 +145,7 @@ ros.subscribe("/skill/status", "std_msgs/String", (msg) => {
 // ------------------------------------------------------------------ voice
 
 const speech = new Speech({
-  onText: (text) => send(text),
+  onText: (text) => { rec?.source(text, "voice"); send(text); },
   onState: (state) => {
     $("mic").setAttribute("aria-pressed", state === "listening" ? "true" : "false");
     $("mic").classList.toggle("busy", state === "transcribing");
@@ -187,6 +190,7 @@ function setTeleop(on) {
   // Repeat the switch so the robot gets it even if ROS restarts while the page is open.
   if (on) keepAlive = setInterval(() => ros.bool("/teleop/enable", true), 2000);
   if (!on) viewer.setHand(null);
+  rec?.setTeleop(on);
 }
 $("hand-toggle").addEventListener("click", async () => {
   if (teleopOn) {
@@ -212,3 +216,10 @@ Object.assign(window.mtb, {
   teleop: (on) => { setTeleop(on); if (on) { hand.mapper.reset(); $("hand-status").textContent = "Following your hand. Pinch to grab."; } },
   feedHand: (options) => hand.feed(options ? fakeHand(options) : null),
 });
+
+if (params.has("rec")) {
+  rec = new Recording({ ros, viewer, params, actions: {
+    send, stop: () => send("stop"),
+    toggleHand: () => $("hand-toggle").click(), toggleMic: () => $("mic").click(),
+  } });
+}
