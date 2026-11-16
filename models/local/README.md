@@ -6,6 +6,6 @@ this file. Use it for models you may not share, such as a scan of your own mug.
 
 - Make the model the real size of the object, standing up (glTF is y-up); it is scaled to the
   object's height.
-- Point clouds work too, such as an image-to-3D Gaussian splat converted to coloured points
-  (`mode` 0 with `COLOR_0`).
+- From a photo: `python3 scripts/photo_to_3d.py --image my-mug.jpg --name mug` makes one with
+  Idol (image to 3D) and puts it here. See [docs/your-own-objects.md](../../docs/your-own-objects.md).
 - Rebuild the images afterwards: `./run.sh --rebuild`.

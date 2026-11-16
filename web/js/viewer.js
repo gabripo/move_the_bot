@@ -348,7 +348,9 @@ export class Viewer {
         const scale = o.model.includes("/builtin/") || o.model.includes("/local/")
           ? sz / (size.y || 1)
           : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
-        model.position.sub(centre);
+        // Models made from a photo (scripts/photo_to_3d.py) put their footprint at x = z = 0, so
+        // a handle does not push the body off the object's place: centre those only vertically.
+        model.position.sub(o.model.includes("/local/") ? new THREE.Vector3(0, centre.y, 0) : centre);
         holder.scale.setScalar(scale);
         let points = null;
         model.traverse((m) => {
