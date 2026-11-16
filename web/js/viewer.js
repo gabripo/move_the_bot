@@ -294,6 +294,19 @@ export class Viewer {
     if (t < 1) requestAnimationFrame(() => this._grow(entry));
   }
 
+  // The inner radius of a point cloud's body around the middle of its height (model units): the
+  // first quarter of the points' distances from the vertical axis, so a handle does not count.
+  _bodyRadius(geometry, offset, height) {
+    const p = geometry.getAttribute("position");
+    const r = [];
+    for (let i = 0; i < p.count; i++) {
+      if (Math.abs(p.getY(i) + offset.y) < 0.25 * height) r.push(Math.hypot(p.getX(i) + offset.x, p.getZ(i) + offset.z));
+    }
+    if (r.length < 50) return 0;
+    r.sort((a, b) => a - b);
+    return r[Math.floor(r.length / 4)];
+  }
+
   // The average of the darker half of a point cloud's colours.
   _darkColour(geometry) {
     const colour = geometry.getAttribute("color");
@@ -343,31 +356,34 @@ export class Viewer {
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const centre = box.getCenter(new THREE.Vector3());
-        // Our own models are made to size (a mug's handle may stick out); downloaded ones
-        // can be any size and shape, so they are fitted inside the object's box.
-        const scale = o.model.includes("/builtin/") || o.model.includes("/local/")
-          ? sz / (size.y || 1)
-          : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
-        // Models made from a photo (scripts/photo_to_3d.py) put their footprint at x = z = 0, so
-        // a handle does not push the body off the object's place: centre those only vertically.
-        model.position.sub(o.model.includes("/local/") ? new THREE.Vector3(0, centre.y, 0) : centre);
-        holder.scale.setScalar(scale);
         let points = null;
+        model.traverse((m) => { if (m.isPoints) points = m; });
+        // Our own models and point clouds (made from a photo by scripts/photo_to_3d.py or the
+        // scanner) are made to size: scaled to the height, a handle may stick out. Downloaded
+        // ones can be any size and shape, so they are fitted inside the object's box.
+        const toSize = points || o.model.includes("/builtin/") || o.model.includes("/local/");
+        const scale = toSize ? sz / (size.y || 1)
+          : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
+        // Photo-made models put their footprint at x = z = 0, so a handle does not push the body
+        // off the object's place (where the robot grasps): centre those only vertically.
+        const footprint = points || o.model.includes("/local/");
+        model.position.sub(footprint ? new THREE.Vector3(0, centre.y, 0) : centre);
+        holder.scale.setScalar(scale);
         model.traverse((m) => {
           if (m.isMesh) m.castShadow = m.receiveShadow = true;
-          if (m.isPoints) {
-            // A point cloud (such as a Gaussian splat turned into points): dots about 2 mm wide.
-            points = m;
+          if (m.isPoints) {                       // a Gaussian splat turned into points: 2 mm dots
             m.material.size = 0.002;
             m.material.sizeAttenuation = true;
           }
         });
         if (points) {
           // Points leave gaps and cast no shadow. A core in the model's darkest colour sits inside
-          // them, so the gaps show the object, not the table, and it casts the shadow. A cylinder
-          // fits inside round and boxy objects alike; well inside, as a splat's surface is blurred.
+          // them, so the gaps show the object, not the table, and it casts the shadow. Its radius
+          // comes from the points around the middle of the height, so a handle does not count.
+          const radius = 0.9 * this._bodyRadius(points.geometry, model.position, size.y) * scale
+            || 0.425 * Math.min(sx, sy);
           const core = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.425 * Math.min(sx, sy), 0.425 * Math.min(sx, sy), 0.85 * sz, 32),
+            new THREE.CylinderGeometry(radius, radius, 0.85 * sz, 32),
             shape.material);
           core.rotation.x = Math.PI / 2;
           core.castShadow = core.receiveShadow = true;
