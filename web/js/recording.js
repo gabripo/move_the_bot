@@ -12,6 +12,8 @@
 // URL options: hook=…&hook2=… (opening title), setup=… (objects for S, ";" between commands),
 // desk=0 (plain table instead of a desk), llmpc=… (where the language model runs).
 
+import { openCamera } from "./camera.js";
+
 const $ = (id) => document.getElementById(id);
 const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
@@ -47,6 +49,7 @@ export class Recording {
     }).observe($("rec-bottom"));
 
     this._camera();
+    $("rec-bubble").addEventListener("click", () => this._camera());
     ros.subscribe("/agent_log", "std_msgs/String", (msg) => {
       try { this._log(JSON.parse(msg.data)); } catch { /* not JSON: nothing to show */ }
     }, { queue: 100 });
@@ -162,12 +165,22 @@ export class Recording {
 
   // ------------------------------------------------------------------ drawing
 
+  // The webcam bubble. When something is wrong it says so inside the bubble, instead of black.
   async _camera() {
+    const say = (text) => { $("rec-cam-msg").textContent = text; };
+    say("Starting the camera…");
     try {
-      $("rec-cam").srcObject = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: "user" } });
-    } catch {
-      $("rec-bubble").classList.add("off");          // no camera: no bubble
+      const stream = await openCamera({ width: { ideal: 640 }, height: { ideal: 640 } });
+      const video = $("rec-cam");
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      const name = stream.getVideoTracks()[0]?.label || "the camera";
+      say("");
+      setTimeout(() => { if (!video.videoWidth) say(`No picture from ${name}. Click to retry.`); }, 3000);
+    } catch (e) {
+      say(e && e.name === "NotAllowedError"
+        ? "Camera blocked: allow it for Chrome in System Settings → Privacy & Security → Camera, then click here."
+        : `Camera error: ${(e && (e.message || e.name)) || e}. Click to retry.`);
     }
   }
 
