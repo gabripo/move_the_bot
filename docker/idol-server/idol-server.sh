@@ -53,19 +53,50 @@ RUN pip install --no-cache-dir --no-deps "idol @ git+https://github.com/speridla
     pip install --no-cache-dir "transformers>=4.56" "diffusers>=0.40" "accelerate>=1.0" \\
       "huggingface_hub>=0.34" "safetensors>=0.4" "tensordict>=0.8" pillow plyfile tqdm \\
       fastapi uvicorn python-multipart requests numpy
+# System libraries AMD's PyTorch and ROCm load but do not ship (found by reading the packages'
+# ELF dependencies): OpenMP, libatomic, the OpenCL loader. After the big downloads, so a
+# rebuild keeps them in Podman's cache.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libatomic1 ocl-icd-libopencl1 \\
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ADD $raw/docker/scan_server.py $raw/scripts/photo_to_3d.py /app/
 ADD $raw/ros/move_the_bot/move_the_bot/models3d.py $raw/ros/move_the_bot/move_the_bot/world.py /app/
+COPY check_gpu.py /app/
 ENV IDOL_BACKEND=local MODELS_DIR=/tmp/idol-scan HF_HOME=/root/.cache/huggingface IDOL_PORT=8001
 CMD ["sh", "-c", "uvicorn scan_server:app --host 0.0.0.0 --port \$IDOL_PORT"]
 CONTAINERFILE
+  cat > "$dir/check_gpu.py" <<'PY'
+"""Run after the build: does PyTorch start, does it see the GPU, does Idol import?"""
+import sys
+try:
+    import torch
+except Exception as e:                    # typically a system library missing in the image
+    print(f"PyTorch did not start: {e}")
+    sys.exit(2)
+print(f"PyTorch {torch.__version__}, ROCm {torch.version.hip}")
+if not torch.cuda.is_available():
+    print("PyTorch started, but it sees no GPU.")
+    sys.exit(3)
+print(f"GPU: {torch.cuda.get_device_name(0)}")
+import idol  # noqa: E402,F401
+print("Idol imports: ready.")
+PY
   say "Building the Idol server image ($GFX; downloads PyTorch for ROCm, several GB, once)"
   sudo podman build --pull=newer -t "$IMAGE" "$dir"
   rm -rf "$dir"
-  say "Checking that PyTorch sees the GPU and that Idol imports"
-  sudo podman run --rm --device /dev/kfd --device /dev/dri --security-opt label=disable "$IMAGE" python -c \
-    "import torch, idol; ok = torch.cuda.is_available(); print('GPU:', torch.cuda.get_device_name(0) if ok else 'NOT FOUND', '| PyTorch', torch.__version__, '| ROCm', torch.version.hip); raise SystemExit(0 if ok else 1)" \
-    || { echo "PyTorch does not see the GPU. Is IDOL_GFX ($GFX) right for your card?"; exit 1; }
+  say "Checking that PyTorch starts, sees the GPU, and that Idol imports"
+  local run=(sudo podman run --rm --device /dev/kfd --device /dev/dri --security-opt label=disable "$IMAGE")
+  local code=0
+  "${run[@]}" python /app/check_gpu.py || code=$?
+  case $code in
+    0) ;;
+    2) echo "A system library is missing in the image. All the missing ones:"
+       "${run[@]}" sh -c 'find /usr/local/lib/python3.12/site-packages -name "*.so*" -type f -print0 | xargs -0 ldd 2>/dev/null | grep "not found" | sort -u'
+       exit 1 ;;
+    3) echo "Is IDOL_GFX ($GFX) right for your card? Does /dev/kfd exist and work (rocminfo on the host)?"
+       exit 1 ;;
+    *) echo "The check failed (exit $code); the reason is above."; exit 1 ;;
+  esac
 }
 
 write_unit() {   # $1: on|off (start at boot)
