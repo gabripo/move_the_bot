@@ -172,6 +172,9 @@ body.rec #actions button { padding: 11px 14px; }
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 #rec-bubble video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+#rec-bubble { pointer-events: auto; cursor: pointer; }
+#rec-cam-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 14%; text-align: center; font-size: 12px; font-weight: 600; color: #e2e8f0; }
+#rec-cam-msg:empty { display: none; }
 #rec-bubble.off { display: none; }
 body.rec #hand-preview { border-color: #34d399; z-index: 2; }
 body.rec #hand-status { display: none; }

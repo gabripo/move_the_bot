@@ -7,6 +7,8 @@
 //
 // Hand tracking runs in the browser with MediaPipe; no video leaves the computer.
 
+import { openCamera } from "./camera.js";
+
 // Resolved against the page, not this file: a bare "./vendor" in import() would mean js/vendor.
 const LOCAL = new URL("vendor/mediapipe", document.baseURI).href;
 const CDN_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm";
@@ -84,8 +86,7 @@ export class HandControl {
   async start() {
     if (this.active) return;
     this.onStatus("Starting the camera…");
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } });
+    const stream = await openCamera({ width: { ideal: 640 }, height: { ideal: 480 } });
     this.video.srcObject = stream;
     await this.video.play();
     this.active = true;
