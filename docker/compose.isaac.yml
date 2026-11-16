@@ -1,0 +1,11 @@
+# Added by ./run.sh --isaac (Linux): Isaac Sim runs on the host, so the robot container joins the
+# host network and both see the same ROS 2 topics. Start Isaac Sim with the same ROS_DOMAIN_ID
+# (42 unless you changed it). Not run against Isaac Sim by the author: docs/real-hardware.md.
+services:
+  robot:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+  web:
+    extra_hosts:
+      - "robot:host-gateway"

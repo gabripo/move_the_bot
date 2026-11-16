@@ -1,0 +1,40 @@
+# Calibration of one real SO-101 (hardware:=real). Every arm is assembled slightly differently,
+# so these numbers are per arm. Copy this file, fill in your values and pass it with
+#   ros2 launch move_the_bot bringup.launch.py hardware:=real calibration:=/path/to/your.yaml
+#
+# homing_offset  makes the servo report 2048 ticks (the middle) when the joint is at 0 rad in
+#                the URDF. Measure it with the arm held in the zero pose (docs/real-hardware.md).
+# range_min/max  safety limits in ticks (4096 ticks per turn), after the offset is applied.
+#
+# The joint names are free text; entries are matched to the URDF joints by servo `id`.
+joints:
+  shoulder_pan:
+    id: 1
+    homing_offset: 0
+    range_min: 800
+    range_max: 3300
+  shoulder_lift:
+    id: 2
+    homing_offset: 0
+    range_min: 900
+    range_max: 3200
+  elbow_flex:
+    id: 3
+    homing_offset: 0
+    range_min: 940
+    range_max: 3150
+  wrist_flex:
+    id: 4
+    homing_offset: 0
+    range_min: 970
+    range_max: 3130
+  wrist_roll:
+    id: 5
+    homing_offset: 0
+    range_min: 260
+    range_max: 3900
+  gripper:
+    id: 6
+    homing_offset: 0
+    range_min: 1940
+    range_max: 3180

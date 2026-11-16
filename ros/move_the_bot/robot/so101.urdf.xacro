@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<!--
+  SO-101 with its ros2_control hardware.
+
+  The arm itself is described once, in so101.urdf. This file adds the part that says WHERE the
+  joint commands go. Change the `hardware` argument and nothing else in the stack has to change:
+
+    hardware:=mock   an ideal simulated arm inside ros2_control (default, no extra software)
+    hardware:=isaac  NVIDIA Isaac Sim, through two joint topics (docs/real-hardware.md)
+    hardware:=real   a real SO-101 on USB, through its Feetech servo bus (docs/real-hardware.md)
+-->
+<robot name="so101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="hardware" default="mock" />
+  <xacro:arg name="usb_port" default="/dev/ttyACM0" />
+  <xacro:arg name="joint_config_file" default="" />
+  <xacro:arg name="joint_commands_topic" default="/isaac_joint_commands" />
+  <xacro:arg name="joint_states_topic" default="/isaac_joint_states" />
+
+  <xacro:include filename="$(find move_the_bot)/robot/so101.urdf" />
+
+  <xacro:property name="hardware" value="$(arg hardware)" />
+
+  <!-- One joint: position command in, position and velocity out. `start` is where the simulated
+       arm begins (the "home" pose); `servo_id` is the joint's ID on the real servo bus. -->
+  <xacro:macro name="position_joint" params="name start servo_id">
+    <joint name="${name}">
+      <xacro:if value="${hardware == 'real'}">
+        <param name="id">${servo_id}</param>
+      </xacro:if>
+      <command_interface name="position" />
+      <state_interface name="position">
+        <param name="initial_value">${start}</param>
+      </state_interface>
+      <state_interface name="velocity" />
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="so101" type="system">
+    <hardware>
+      <xacro:if value="${hardware == 'mock'}">
+        <plugin>mock_components/GenericSystem</plugin>
+        <param name="calculate_dynamics">true</param>
+      </xacro:if>
+      <xacro:if value="${hardware == 'isaac'}">
+        <plugin>joint_state_topic_hardware_interface/JointStateTopicSystem</plugin>
+        <param name="joint_commands_topic">$(arg joint_commands_topic)</param>
+        <param name="joint_states_topic">$(arg joint_states_topic)</param>
+        <param name="sum_wrapped_joint_states">true</param>
+      </xacro:if>
+      <xacro:if value="${hardware == 'real'}">
+        <plugin>feetech_ros2_driver/FeetechHardwareInterface</plugin>
+        <param name="usb_port">$(arg usb_port)</param>
+        <!-- Per-arm calibration (homing offsets, limits): see config/so101_calibration.example.yaml -->
+        <xacro:unless value="${'$(arg joint_config_file)' == ''}">
+          <param name="joint_config_file">$(arg joint_config_file)</param>
+        </xacro:unless>
+      </xacro:if>
+    </hardware>
+    <xacro:position_joint name="shoulder_pan" start="0.0" servo_id="1" />
+    <xacro:position_joint name="shoulder_lift" start="-0.79" servo_id="2" />
+    <xacro:position_joint name="elbow_flex" start="0.31" servo_id="3" />
+    <xacro:position_joint name="wrist_flex" start="1.52" servo_id="4" />
+    <xacro:position_joint name="wrist_roll" start="0.0" servo_id="5" />
+    <xacro:position_joint name="gripper" start="1.0" servo_id="6" />
+  </ros2_control>
+</robot>

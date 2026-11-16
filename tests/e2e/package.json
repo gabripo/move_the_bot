@@ -1,0 +1,9 @@
+{
+  "name": "move-the-bot-browser-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser test and screenshot generator for the move_the_bot web app.",
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

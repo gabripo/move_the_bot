@@ -1,0 +1,6 @@
+# Required by the Pilz planner (only its joint-space "PTP" motion is used here).
+cartesian_limits:
+  max_trans_vel: 1.0
+  max_trans_acc: 2.25
+  max_trans_dec: -5.0
+  max_rot_vel: 1.57

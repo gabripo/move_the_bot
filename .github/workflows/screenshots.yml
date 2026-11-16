@@ -1,0 +1,78 @@
+name: Screenshots
+
+# Regenerates the pictures and the demo clip in docs/media/ from the running app, so the README
+# always shows the current state. Every frame is a real run: MoveIt plans, ros2_control executes.
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'web/**'
+      - 'ros/**'
+      - 'models/**'
+      - 'docker/**'
+      - 'docker-compose.yml'
+      - 'tests/e2e/screenshots.mjs'
+      - 'tests/e2e/lib.mjs'
+      - '.github/workflows/screenshots.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      OLLAMA_URL: http://127.0.0.1:9     # the demo uses commands the built-in rules understand
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start the app
+        run: |
+          docker compose build robot web
+          docker compose up -d robot web
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Take the screenshots and record the demo
+        working-directory: tests/e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          node screenshots.mjs
+
+      - name: Turn the recording into a GIF and an MP4
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          cd docs/media
+          # Headless rendering is slow, so the recording is sped up to about 30 seconds.
+          seconds=$(ffprobe -v error -show_entries format=duration -of csv=p=0 demo.webm)
+          speed=$(python3 -c "print(max(1.0, float('$seconds') / 30.0))")
+          ffmpeg -y -loglevel error -i demo.webm -vf "setpts=PTS/$speed,fps=12,scale=960:-2:flags=lanczos" -an -c:v libx264 -pix_fmt yuv420p -crf 26 demo.mp4
+          ffmpeg -y -loglevel error -i demo.webm -vf "setpts=PTS/$speed,fps=8,scale=800:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" demo.gif
+          rm demo.webm
+          ls -la
+
+      - name: Commit what changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/media
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged"
+          else
+            git commit -m "Update screenshots [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Logs (on failure)
+        if: failure()
+        run: docker compose logs --no-color --tail 300
