@@ -327,13 +327,30 @@ export class Viewer {
         const centre = box.getCenter(new THREE.Vector3());
         // Our own models are made to size (a mug's handle may stick out); downloaded ones
         // can be any size and shape, so they are fitted inside the object's box.
-        const scale = o.model.includes("/builtin/")
+        const scale = o.model.includes("/builtin/") || o.model.includes("/local/")
           ? sz / (size.y || 1)
           : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
         model.position.sub(centre);
         holder.scale.setScalar(scale);
-        model.traverse((m) => { if (m.isMesh) m.castShadow = m.receiveShadow = true; });
-        group.remove(shape);
+        let points = false;
+        model.traverse((m) => {
+          if (m.isMesh) m.castShadow = m.receiveShadow = true;
+          if (m.isPoints) {
+            // A point cloud (such as a Gaussian splat turned into points): dots about 1.4 mm
+            // wide, so the surface looks closed at the distances the scene is seen from.
+            points = true;
+            m.material.size = 0.0014;
+            m.material.sizeAttenuation = true;
+          }
+        });
+        if (points) {
+          // Points cast no shadow: keep the basic shape, invisible, to cast it.
+          shape.material = shape.material.clone();
+          shape.material.colorWrite = false;
+          shape.material.depthWrite = false;
+        } else {
+          group.remove(shape);
+        }
         group.add(holder);
       }, undefined, () => {});
     }

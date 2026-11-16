@@ -16,5 +16,6 @@ COPY --from=vendor /web/vendor /usr/share/nginx/html/vendor
 # The same robot description and meshes that ROS uses.
 COPY ros/move_the_bot/robot /usr/share/nginx/html/robot
 COPY models/builtin /models/builtin
+COPY models/local /models/local
 RUN mkdir -p /models/cache
 EXPOSE 80
