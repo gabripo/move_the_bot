@@ -37,29 +37,29 @@ laptop, for example). Ollama has no password, so do this only in a network you t
 forward port 11434 on your router.
 
 **On the GPU PC** (Linux with an AMD GPU; written for Bazzite, works on Fedora and others with
-Podman). [`docker/ollama-server/ollama.container`](../docker/ollama-server/ollama.container)
-runs the official ROCm build of Ollama as a service that starts at boot:
+Podman). [`docker/ollama-server/ollama-server.sh`](../docker/ollama-server/ollama-server.sh)
+runs the official ROCm container of Ollama as a system service, opens the port in the firewall,
+downloads the model and checks that it runs on the GPU:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ollama-server/ollama.container
-sudo podman pull docker.io/ollama/ollama:rocm          # several GB, once
-sudo cp ollama.container /etc/containers/systemd/
-sudo systemctl daemon-reload
-sudo systemctl start ollama
-
-# Allow other computers in the network to connect (firewalld, as on Bazzite and Fedora)
-sudo firewall-cmd --permanent --add-port=11434/tcp && sudo firewall-cmd --reload
-
-# Download the model and check that it runs on the GPU
-sudo podman exec ollama ollama pull qwen2.5:14b-instruct-q4_K_M
-sudo podman exec ollama ollama run qwen2.5:14b-instruct-q4_K_M "Say hi" --verbose
-sudo podman exec ollama ollama ps          # PROCESSOR should say 100% GPU
-hostname -I                                # this PC's address in the network
+curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ollama-server/ollama-server.sh
+bash ollama-server.sh install              # starts now and at every boot
+bash ollama-server.sh install --no-boot    # or: starts only when you ask
 ```
 
-If `ollama ps` shows CPU, look for the detected GPU in `sudo journalctl -u ollama | grep -i -E "gpu|rocm|amdgpu"`.
-To use Vulkan instead of ROCm, change the image to `docker.io/ollama/ollama:latest` and remove
-the `/dev/kfd` line.
+It prints the addresses other computers can use. Afterwards:
+
+| Command | |
+|---|---|
+| `ollama-server start` / `stop` | run or stop the server now (stop frees the GPU for games) |
+| `ollama-server boot on` / `off` | start automatically at boot, or not |
+| `ollama-server status` | running? on the GPU? which models? |
+| `ollama-server model NAME` | download another model |
+| `ollama-server uninstall` | remove the service, keep the models |
+
+The model also frees the GPU's memory by itself 10 minutes after the last request. If `status`
+shows the model on the CPU instead of the GPU, try the Vulkan back-end:
+`OLLAMA_IMAGE=docker.io/ollama/ollama:latest ollama-server install`.
 
 **On the computer that runs move_the_bot**, with the address from `hostname -I`:
 
