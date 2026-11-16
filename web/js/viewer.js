@@ -10,10 +10,11 @@ import URDFLoader from "urdf-loader";
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
-// Camera presets. "operator" looks from behind the robot, so the arm's left is the screen's left
-// and hand control feels natural; "side" and "front" are nicer for watching.
+// Camera presets. "operator" looks from behind the robot and a little from its right, so the arm's
+// left is still the screen's left (hand control feels natural) but the arm does not hide the objects
+// on the table; "side" and "front" are nicer for watching.
 export const VIEWS = {
-  operator: { position: [-0.44, -0.14, 0.62], target: [0.21, 0.0, 0.05] },
+  operator: { position: [-0.34, -0.3, 0.64], target: [0.24, 0.02, 0.05] },
   side: { position: [-0.18, -0.56, 0.52], target: [0.2, 0.0, 0.06] },
   front: { position: [0.66, -0.42, 0.46], target: [0.18, 0.0, 0.06] },
   top: { position: [0.2, -0.001, 1.0], target: [0.2, 0.0, 0.0] },
