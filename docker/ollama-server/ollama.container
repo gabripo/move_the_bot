@@ -1,0 +1,34 @@
+# Ollama as a system service on a Linux PC with an AMD GPU (tested setup: Bazzite, Radeon RX 9070 XT).
+# Podman reads this file at boot and runs the official ROCm build of Ollama, reachable from the
+# network on port 11434. Steps: docs/hardware-and-gpus.md#a-gpu-pc-in-your-network
+#
+#   sudo cp ollama.container /etc/containers/systemd/
+#   sudo systemctl daemon-reload && sudo systemctl start ollama
+
+[Unit]
+Description=Ollama language model server (AMD GPU, ROCm)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=ollama
+Image=docker.io/ollama/ollama:rocm
+# The GPU: compute (kfd) and render nodes (dri).
+AddDevice=/dev/kfd
+AddDevice=/dev/dri
+# SELinux would otherwise block the container from opening the GPU devices.
+SecurityLabelDisable=true
+PublishPort=11434:11434
+Volume=ollama:/root/.ollama
+Environment=OLLAMA_CONTEXT_LENGTH=8192
+# Free the video memory 10 minutes after the last request (games need it back).
+Environment=OLLAMA_KEEP_ALIVE=10m
+AutoUpdate=registry
+
+[Service]
+Restart=always
+# The first start downloads the image (several GB).
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
