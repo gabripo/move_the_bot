@@ -18,6 +18,9 @@ node_modules
 # Downloaded 3D models
 models/cache/*
 !models/cache/.gitkeep
+# Your own models: see models/local/README.md
+models/local/*
+!models/local/README.md
 
 # Local settings and secrets
 .env

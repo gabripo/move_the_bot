@@ -135,3 +135,6 @@ checks every other request, so a wrong answer becomes an error message, not a wr
 Add a line to `CATALOGUE` in `move_the_bot/world.py` (shape, size in metres, colour) and run
 `python3 scripts/make_models.py` to generate its 3D model. The size you give is used for
 drawing, for grasping and for collision checking.
+
+To draw an object with your own 3D model, for example one made from a photo of your mug, see
+[your-own-objects.md](your-own-objects.md).

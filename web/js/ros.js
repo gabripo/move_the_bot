@@ -30,7 +30,7 @@ export class Ros {
       try { data = JSON.parse(event.data); } catch { return; }
       if (data.op !== "publish") return;
       const s = this.subscriptions.get(data.topic);
-      if (s) s.callback(data.msg);
+      if (s) s.callbacks.forEach((callback) => callback(data.msg));
     };
     socket.onclose = () => {
       const was = this.connected;
@@ -57,8 +57,14 @@ export class Ros {
 
   // queue: how many messages rosbridge keeps for a slow browser. 1 suits state topics (only the
   // newest matters); event topics such as the conversation need more, or lines get lost.
+  // Subscribing again to the same topic adds a listener; the first call's options apply.
   subscribe(topic, type, callback, { throttle = 0, latched = false, queue = 1 } = {}) {
-    const s = { type, callback, throttle, latched, queue };
+    const existing = this.subscriptions.get(topic);
+    if (existing) {
+      existing.callbacks.push(callback);
+      return;
+    }
+    const s = { type, callbacks: [callback], throttle, latched, queue };
     this.subscriptions.set(topic, s);
     if (this.connected) this._sendSubscribe(topic, s);
   }

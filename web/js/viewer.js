@@ -18,6 +18,8 @@ export const VIEWS = {
   side: { position: [-0.18, -0.56, 0.52], target: [0.2, 0.0, 0.06] },
   front: { position: [0.66, -0.42, 0.46], target: [0.18, 0.0, 0.06] },
   top: { position: [0.2, -0.001, 1.0], target: [0.2, 0.0, 0.0] },
+  // Like "operator", from a little further back: the whole desk fits a portrait recording.
+  desk: { position: [-0.4, -0.4, 0.8], target: [0.26, 0.0, 0.03] },
 };
 
 export class Viewer {
@@ -109,6 +111,7 @@ export class Viewer {
     top.position.set(0.2, 0, -0.0174);
     top.receiveShadow = true;
     this.scene.add(top);
+    this.tableTop = top;
 
     // A faint 5 cm grid, and the part of the table the arm can reach.
     const grid = new THREE.GridHelper(1.0, 20, 0xc9c2b4, 0xd6d0c3);
@@ -117,12 +120,83 @@ export class Viewer {
     grid.material.transparent = true;
     grid.material.opacity = 0.6;
     this.scene.add(grid);
+    this.grid = grid;
 
     const reach = new THREE.Mesh(
       new THREE.RingGeometry(0.10, 0.33, 96, 1, -Math.PI / 2 + 0.25, Math.PI - 0.5),
       new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.10, side: THREE.DoubleSide }));
     reach.position.set(0.0388, 0, -0.0018);
     this.scene.add(reach);
+  }
+
+  // A working desk: wooden top and a few things that belong on a desk. They are only drawn,
+  // not obstacles for MoveIt, so they all stand outside the arm's reach.
+  setDesk(on) {
+    this.tableTop.material.color.set(on ? 0xb68a62 : 0xe9e4da);
+    this.tableTop.material.roughness = on ? 0.6 : 0.85;
+    this.grid.visible = !on;
+    if (!this.desk) this.desk = this._deskProps();
+    this.desk.visible = on;
+  }
+
+  _deskProps() {
+    const group = new THREE.Group();
+    const box = (size, color, position, extra = {}) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.55, ...extra }));
+      mesh.position.set(...position);
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    };
+    const cylinder = (radius, height, color, position) => {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 0.92, height, 32),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
+      mesh.rotation.x = Math.PI / 2;           // cylinders stand on the table (z is up)
+      mesh.position.set(...position);
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    };
+
+    // An open laptop at the far side, its screen turned towards the arm.
+    const laptop = new THREE.Group();
+    laptop.add(box([0.22, 0.31, 0.012], 0x30353d, [0, 0, 0.006]));
+    laptop.add(box([0.12, 0.26, 0.002], 0x22262c, [-0.03, 0, 0.013]));             // keyboard
+    const lid = new THREE.Group();
+    lid.add(box([0.008, 0.31, 0.21], 0x30353d, [0, 0, 0.105]));
+    lid.add(box([0.002, 0.29, 0.18], 0x10233d, [-0.005, 0, 0.11], { emissive: 0x1d4ed8, emissiveIntensity: 0.35 }));
+    lid.position.set(0.11, 0, 0.012);
+    lid.rotation.y = 0.32;                       // leaning back, away from the keyboard
+    laptop.add(lid);
+    laptop.position.set(0.56, 0.22, 0);
+    laptop.rotation.z = -0.35;
+    group.add(laptop);
+
+    // A notebook with a pen on it, and a cup of pens.
+    const notebook = box([0.15, 0.21, 0.012], 0x1e3a5f, [0.47, -0.34, 0.006]);
+    notebook.rotation.z = 0.35;
+    group.add(notebook);
+    const pen = cylinder(0.004, 0.14, 0x111827, [0.47, -0.34, 0.016]);
+    pen.rotation.set(0, 0, 0.9);                // lying flat (a cylinder's axis is y)
+    group.add(pen);
+    group.add(cylinder(0.035, 0.1, 0x475569, [0.18, -0.42, 0.05]));
+    [[0.008, 0.006, 0x2563eb], [-0.01, 0.004, 0xdc2626], [0.002, -0.01, 0x111827]].forEach(([dx, dy, color], i) => {
+      const p = cylinder(0.004, 0.14, color, [0.18 + dx, -0.42 + dy, 0.09 + 0.01 * i]);
+      p.rotation.set(Math.PI / 2 + dx * 8, dy * 8, 0);
+      group.add(p);
+    });
+
+    // A plant in a pot on the left.
+    group.add(cylinder(0.05, 0.08, 0xe7e5e4, [-0.12, 0.4, 0.04]));
+    const leaves = new THREE.MeshStandardMaterial({ color: 0x2f7d32, roughness: 0.8 });
+    [[0, 0, 0.13, 0.055], [0.03, 0.02, 0.17, 0.04], [-0.025, -0.02, 0.16, 0.042]].forEach(([dx, dy, z, r]) => {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), leaves);
+      leaf.position.set(-0.12 + dx, 0.4 + dy, z);
+      leaf.castShadow = true;
+      group.add(leaf);
+    });
+
+    this.scene.add(group);
+    return group;
   }
 
   _handMarker() {
@@ -220,6 +294,24 @@ export class Viewer {
     if (t < 1) requestAnimationFrame(() => this._grow(entry));
   }
 
+  // The average of the darker half of a point cloud's colours.
+  _darkColour(geometry) {
+    const colour = geometry.getAttribute("color");
+    if (!colour) return new THREE.Color(0x202020);
+    const n = colour.count, lum = new Float32Array(n);
+    for (let i = 0; i < n; i++) lum[i] = 0.2126 * colour.getX(i) + 0.7152 * colour.getY(i) + 0.0722 * colour.getZ(i);
+    const median = Float32Array.from(lum).sort()[n >> 1];
+    const sum = [0, 0, 0];
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      if (lum[i] > median) continue;
+      sum[0] += colour.getX(i); sum[1] += colour.getY(i); sum[2] += colour.getZ(i);
+      count++;
+    }
+    // Darker still: the brightest of these are highlights and reflections, not the material.
+    return new THREE.Color().setRGB(sum[0] / count, sum[1] / count, sum[2] / count).multiplyScalar(0.45);
+  }
+
   _dispose(entry) {
     entry.group.remove(entry.group.userData.label);
     this.scene.remove(entry.group);
@@ -253,13 +345,32 @@ export class Viewer {
         const centre = box.getCenter(new THREE.Vector3());
         // Our own models are made to size (a mug's handle may stick out); downloaded ones
         // can be any size and shape, so they are fitted inside the object's box.
-        const scale = o.model.includes("/builtin/")
+        const scale = o.model.includes("/builtin/") || o.model.includes("/local/")
           ? sz / (size.y || 1)
           : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
-        model.position.sub(centre);
+        // Models made from a photo (scripts/photo_to_3d.py) put their footprint at x = z = 0, so
+        // a handle does not push the body off the object's place: centre those only vertically.
+        model.position.sub(o.model.includes("/local/") ? new THREE.Vector3(0, centre.y, 0) : centre);
         holder.scale.setScalar(scale);
-        model.traverse((m) => { if (m.isMesh) m.castShadow = m.receiveShadow = true; });
-        group.remove(shape);
+        let points = null;
+        model.traverse((m) => {
+          if (m.isMesh) m.castShadow = m.receiveShadow = true;
+          if (m.isPoints) {
+            // A point cloud (such as a Gaussian splat turned into points): dots about 2 mm wide.
+            points = m;
+            m.material.size = 0.002;
+            m.material.sizeAttenuation = true;
+          }
+        });
+        if (points) {
+          // Points leave gaps and cast no shadow. The basic shape stays inside them, a little
+          // smaller, in the model's darkest colour: the gaps show the object, not the table.
+          shape.scale.setScalar(0.85);            // well inside: a splat's surface is a little blurred
+          shape.material.color.copy(this._darkColour(points.geometry));
+          shape.material.roughness = 0.35;
+        } else {
+          group.remove(shape);
+        }
         group.add(holder);
       }, undefined, () => {});
     }
