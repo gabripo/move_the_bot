@@ -31,7 +31,7 @@ export class Recording {
     this.hookTimer = null;
     this.llmPc = params.get("llmpc") || "my gaming PC";
     this.setup = (params.get("setup")
-      || "clear the table;create a mug on the left;create a soda can on the right;create an apple in front")
+      || "clear the table;create a mug on the right;create a red cube in front;create an apple on the left")
       .split(";").map((s) => s.trim()).filter(Boolean);
 
     document.body.classList.add("rec");
