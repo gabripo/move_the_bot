@@ -108,6 +108,19 @@ def scanned_size(kind: str, models_dir: str):
         return None
 
 
+def scanned_kinds(models_dir: str) -> list:
+    """The names of all objects scanned with the webcam."""
+    kinds = []
+    for f in (Path(models_dir) / "cache").glob("*.json"):
+        try:
+            info = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if info.get("source") == "scan" and info.get("kind") and f.with_suffix(".glb").is_file():
+            kinds.append(info["kind"])
+    return kinds
+
+
 def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
     """Web path of a GLB for `kind` ('/models/builtin/apple.glb'), or '' when there is none."""
     slug = _slug(kind)

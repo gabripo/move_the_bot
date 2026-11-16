@@ -236,3 +236,16 @@ def test_split_clauses():
     assert split_clauses("Create an apple, then grab it and put it left.") == [
         "create an apple", "grab it", "put it left"]
     assert split_clauses("move to 0.2, 0.1, 0.15") != []
+
+
+def test_scanned_objects_are_recognised_by_their_whole_name():
+    # A webcam scan named "kaioken mug" must not be read as a plain mug.
+    from move_the_bot import language
+    try:
+        language.set_extra_kinds(["kaioken mug"])
+        assert parse("create a kaioken mug on the left") == [
+            {"skill": "spawn", "object": "kaioken mug", "at": {"position": "left"}}]
+        assert parse("create a mug") == [{"skill": "spawn", "object": "mug"}]
+    finally:
+        language.set_extra_kinds([])
+    assert parse("create a kaioken mug") == [{"skill": "spawn", "object": "mug"}]

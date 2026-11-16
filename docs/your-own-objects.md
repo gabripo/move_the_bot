@@ -100,33 +100,41 @@ the same GPU PC.
 
 ### A scan server on your GPU PC
 
-On the GPU PC (Linux, Python 3.10+, PyTorch with GPU support). Idol's weights download on the
-first scan (about 3 GB); it reads images through two gated models, so accept their terms with your
-Hugging Face account first:
-[DINOv3](https://huggingface.co/facebook/dinov3-vith16plus-pretrain-lvd1689m) and
-[FLUX.2-dev](https://huggingface.co/black-forest-labs/FLUX.2-dev) (only its VAE is used; check
-both licences for your use).
+[`docker/idol-server/idol-server.sh`](../docker/idol-server/idol-server.sh) sets one up next to
+Ollama, the same way [`ollama-server.sh`](hardware-and-gpus.md#a-gpu-pc-in-your-network) does: a
+container with PyTorch for your AMD GPU (ROCm), Idol and this project's scan server, run by Podman
+as a system service on port 8001. Written for Bazzite; other Linux systems with Podman work too.
 
-```bash
-git clone https://github.com/speridlabs/idol-sdk && pip install -e idol-sdk
-pip install fastapi uvicorn python-multipart numpy requests
-hf auth login
-git clone https://github.com/gabripo/move_the_bot && mkdir -p ~/idol-scan
-cp move_the_bot/docker/scan_server.py move_the_bot/scripts/photo_to_3d.py \
-   move_the_bot/ros/move_the_bot/move_the_bot/{models3d,world}.py ~/idol-scan/
-cd ~/idol-scan && IDOL_BACKEND=local MODELS_DIR=/tmp/idol-scan uvicorn scan_server:app --host 0.0.0.0 --port 8001
-```
+1. With your Hugging Face account, accept the terms of the two models Idol reads images with,
+   [DINOv3](https://huggingface.co/facebook/dinov3-vith16plus-pretrain-lvd1689m) and
+   [FLUX.2-dev](https://huggingface.co/black-forest-labs/FLUX.2-dev) (only its VAE is used; check
+   both licences for your use), and create a read token at
+   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+2. On the GPU PC:
 
-On the computer that runs move_the_bot, in `.env`:
+   ```bash
+   curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/idol-server/idol-server.sh
+   bash idol-server.sh install        # builds the image (several GB, once) and starts the service
+   idol-server login                  # paste the token
+   idol-server test                   # the first run also downloads Idol (about 3 GB)
+   ```
 
-```bash
-IDOL_BACKEND=remote
-IDOL_URL=http://192.168.1.50:8001
-```
+   `IDOL_GFX` selects the GPU family (default `gfx1201`, the Radeon RX 9070 series; `gfx1100` for
+   the RX 7900 series).
+3. On the computer that runs move_the_bot, in `.env` (the address `idol-server test` prints):
 
-Then `./run.sh --scan`. Like Ollama, the server has no password: use it only in a network you
-trust. Idol's authors run it on NVIDIA GPUs (CUDA) and Apple Silicon; on an AMD GPU, PyTorch's
-ROCm build may work, but this has not been tried here.
+   ```bash
+   IDOL_BACKEND=remote
+   IDOL_URL=http://192.168.1.50:8001
+   ```
+
+   Then `./run.sh --scan`.
+
+The GPU is shared: before each scan the server asks Ollama on the same PC to unload its model
+(a 14B model and Idol do not fit together in 16 GB; the next language request loads it again),
+and after the scan it frees the video memory, so games get it back. Like Ollama, the server has
+no password: use it only in a network you trust. Idol's authors run it on NVIDIA GPUs and Apple
+Silicon; on AMD GPUs its NVIDIA-only speed-ups are switched off (`IDOL_OPTIMIZE=auto`).
 
 ### Testing the scanner
 
