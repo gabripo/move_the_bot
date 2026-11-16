@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 732" width="1200" height="732" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>move_the_bot: where each step runs</title>
+  <desc>For each step from a command to motion, the computer and component that computes it.</desc>
+  <rect width="1200" height="732" rx="16" fill="#ffffff"/>
+  <text x="30" y="44" font-size="22" font-weight="700" fill="#1f2933">move_the_bot · where each step runs</text>
+  <text x="30" y="68" font-size="14" fill="#52606d">From a command to motion, top to bottom: which computer does the work, and which part of the code.</text>
+  <text x="44" y="122" font-size="13" font-weight="600" fill="#52606d">Step</text>
+  <rect x="360" y="92" width="190" height="568" rx="10" fill="#eef4fd"/>
+  <rect x="360" y="92" width="190" height="48" rx="10" fill="#e1ecfb"/>
+  <text x="455" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2933">Browser</text>
+  <text x="455" y="130" text-anchor="middle" font-size="12" fill="#52606d">on the laptop</text>
+  <rect x="560" y="92" width="220" height="568" rx="10" fill="#fffaf0"/>
+  <rect x="560" y="92" width="220" height="48" rx="10" fill="#fdf1d3"/>
+  <text x="670" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2933">Docker</text>
+  <text x="670" y="130" text-anchor="middle" font-size="12" fill="#52606d">robot container, laptop</text>
+  <rect x="790" y="92" width="180" height="568" rx="10" fill="#f7f3fd"/>
+  <rect x="790" y="92" width="180" height="48" rx="10" fill="#ece3fb"/>
+  <text x="880" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2933">GPU PC</text>
+  <text x="880" y="130" text-anchor="middle" font-size="12" fill="#52606d">same home network</text>
+  <rect x="980" y="92" width="190" height="568" rx="10" fill="#fdf4f0"/>
+  <rect x="980" y="92" width="190" height="48" rx="10" fill="#fbe4dc"/>
+  <text x="1075" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2933">Arm</text>
+  <text x="1075" y="130" text-anchor="middle" font-size="12" fill="#52606d">simulated or real</text>
+  <circle cx="52" cy="171" r="11" fill="#3e4c59"/>
+  <text x="52" y="175" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">1</text>
+  <text x="72" y="176" font-size="14" fill="#1f2933">You type or say a command</text>
+  <rect x="368" y="154" width="174" height="34" rx="7" fill="#ffffff" stroke="#4a90d9" stroke-width="1.3"/>
+  <text x="455" y="176" text-anchor="middle" font-size="12.5" fill="#1f2933">text box · Web Speech API</text>
+  <line x1="30" y1="194" x2="1170" y2="194" stroke="#e4e7eb"/>
+  <circle cx="52" cy="217" r="11" fill="#3e4c59"/>
+  <text x="52" y="221" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">2</text>
+  <text x="72" y="222" font-size="14" fill="#1f2933">Your hand is tracked</text>
+  <rect x="368" y="200" width="174" height="34" rx="7" fill="#ffffff" stroke="#4a90d9" stroke-width="1.3"/>
+  <text x="455" y="222" text-anchor="middle" font-size="12.5" fill="#1f2933">MediaPipe hand landmarks</text>
+  <line x1="30" y1="240" x2="1170" y2="240" stroke="#e4e7eb"/>
+  <circle cx="52" cy="263" r="11" fill="#3e4c59"/>
+  <text x="52" y="267" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">3</text>
+  <text x="72" y="268" font-size="14" fill="#1f2933">A simple command is understood</text>
+  <rect x="568" y="246" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="268" text-anchor="middle" font-size="12.5" fill="#1f2933">agent · language.py rules</text>
+  <line x1="30" y1="286" x2="1170" y2="286" stroke="#e4e7eb"/>
+  <circle cx="52" cy="309" r="11" fill="#3e4c59"/>
+  <text x="52" y="313" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">4</text>
+  <text x="72" y="314" font-size="14" fill="#1f2933">A free-form request is planned</text>
+  <rect x="568" y="292" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="314" text-anchor="middle" font-size="12.5" fill="#1f2933">agent · llm.py asks</text>
+  <rect x="798" y="292" width="164" height="34" rx="7" fill="#ffffff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="880" y="314" text-anchor="middle" font-size="12.5" fill="#1f2933">Ollama · qwen2.5 14B</text>
+  <line x1="30" y1="332" x2="1170" y2="332" stroke="#e4e7eb"/>
+  <circle cx="52" cy="355" r="11" fill="#3e4c59"/>
+  <text x="52" y="359" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">5</text>
+  <text x="72" y="360" font-size="14" fill="#1f2933">Every skill is validated</text>
+  <rect x="568" y="338" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="360" text-anchor="middle" font-size="12.5" fill="#1f2933">skills.py · validate()</text>
+  <line x1="30" y1="378" x2="1170" y2="378" stroke="#e4e7eb"/>
+  <circle cx="52" cy="401" r="11" fill="#3e4c59"/>
+  <text x="52" y="405" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">6</text>
+  <text x="72" y="406" font-size="14" fill="#1f2933">Joint angles are computed (IK)</text>
+  <rect x="568" y="384" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="406" text-anchor="middle" font-size="12.5" fill="#1f2933">skill_server · kinematics.py</text>
+  <line x1="30" y1="424" x2="1170" y2="424" stroke="#e4e7eb"/>
+  <circle cx="52" cy="447" r="11" fill="#3e4c59"/>
+  <text x="52" y="451" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">7</text>
+  <text x="72" y="452" font-size="14" fill="#1f2933">A collision-free path is planned</text>
+  <rect x="568" y="430" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="452" text-anchor="middle" font-size="12.5" fill="#1f2933">move_group · Pilz, then OMPL</text>
+  <line x1="30" y1="470" x2="1170" y2="470" stroke="#e4e7eb"/>
+  <circle cx="52" cy="493" r="11" fill="#3e4c59"/>
+  <text x="52" y="497" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">8</text>
+  <text x="72" y="498" font-size="14" fill="#1f2933">Hand control: 15 Hz, no planning</text>
+  <rect x="568" y="476" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="498" text-anchor="middle" font-size="12.5" fill="#1f2933">skill_server → controller</text>
+  <line x1="30" y1="516" x2="1170" y2="516" stroke="#e4e7eb"/>
+  <circle cx="52" cy="539" r="11" fill="#3e4c59"/>
+  <text x="52" y="543" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">9</text>
+  <text x="72" y="544" font-size="14" fill="#1f2933">The trajectory runs at 100 Hz</text>
+  <rect x="568" y="522" width="204" height="34" rx="7" fill="#ffffff" stroke="#d4a017" stroke-width="1.3"/>
+  <text x="670" y="544" text-anchor="middle" font-size="12.5" fill="#1f2933">ros2_control controllers</text>
+  <line x1="30" y1="562" x2="1170" y2="562" stroke="#e4e7eb"/>
+  <circle cx="52" cy="585" r="11" fill="#3e4c59"/>
+  <text x="52" y="589" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">10</text>
+  <text x="72" y="590" font-size="14" fill="#1f2933">The joints move</text>
+  <rect x="988" y="568" width="174" height="34" rx="7" fill="#ffffff" stroke="#dd6b4d" stroke-width="1.3"/>
+  <text x="1075" y="590" text-anchor="middle" font-size="12.5" fill="#1f2933">mock, Isaac Sim or SO-101</text>
+  <line x1="30" y1="608" x2="1170" y2="608" stroke="#e4e7eb"/>
+  <circle cx="52" cy="631" r="11" fill="#3e4c59"/>
+  <text x="52" y="635" text-anchor="middle" font-size="12" font-weight="700" fill="#ffffff">11</text>
+  <text x="72" y="636" font-size="14" fill="#1f2933">The 3D view follows the joints</text>
+  <rect x="368" y="614" width="174" height="34" rx="7" fill="#ffffff" stroke="#4a90d9" stroke-width="1.3"/>
+  <text x="455" y="636" text-anchor="middle" font-size="12.5" fill="#1f2933">three.js · /joint_states</text>
+  <text x="30" y="690" font-size="13" fill="#52606d">The webcam video stays in the browser: only the hand's position is sent. Speech uses the browser's recognition (in Chrome, audio goes to Google),</text>
+  <text x="30" y="710" font-size="13" fill="#52606d">or Whisper on the laptop with ./run.sh --voice. Only text reaches the language model, and only when the rules do not understand.</text>
+</svg>

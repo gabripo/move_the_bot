@@ -40,20 +40,9 @@ Then open `http://localhost:8080/?ws=ws://localhost:9090`. The robot's meshes ar
 
 ## Tests
 
-| Kind | Command | Needs |
-|---|---|---|
-| Unit | `python -m pytest tests/unit` | Python, numpy, requests |
-| Robot, end to end | `docker compose exec robot /ros_entrypoint.sh pytest /ros_ws/tests/e2e/test_robot.py` | the running stack |
-| Browser | `cd tests/e2e && npm install && npx playwright install chromium && node browser_test.mjs` | the running stack, Node 20+ |
-
-The unit tests cover the language rules, the world model, skill validation, the parsing of
-language-model answers and the kinematics. The end-to-end tests send real requests and check
-what the robot did: pick and place, stacking, planning around an obstacle, error messages,
-stop, teleoperation. The browser test checks that the page connects, draws the robot and sends
-commands.
-
-GitHub runs all of them on every pull request (`.github/workflows/tests.yml`), plus the same
-robot tests through the Isaac Sim hardware interface.
+[testing.md](testing.md) shows how to run every test on your own computer: the unit tests, the
+robot tests against the running stack, the browser test and the Isaac Sim interface test, plus
+what to check by hand.
 
 ## Screenshots and the demo clip
 
@@ -74,6 +63,7 @@ is no webcam in CI. The rest of the path, from hand position to joint motion, is
 
 | Symptom | Likely cause and fix |
 |---|---|
+| Every command fails with "MoveIt did not answer" | MoveIt's `move_group` process has stopped. `docker compose logs robot \| grep -B5 "process has died"` shows why; `docker compose restart robot` starts it again. |
 | The page shows "Disconnected" | The robot container is still starting (about 20 s), or has stopped: `./run.sh logs`. |
 | "Model" stays yellow | The language model is still downloading or loading. Rule-based commands work meanwhile. `docker compose logs ollama`. |
 | Free-form requests take a minute | The model runs on the CPU. See [hardware-and-gpus.md](hardware-and-gpus.md). |
