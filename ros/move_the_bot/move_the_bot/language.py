@@ -34,15 +34,35 @@ DIRECTIONS = {
     "back": (-1, 0, 0), "backward": (-1, 0, 0), "backwards": (-1, 0, 0), "closer": (-1, 0, 0),
 }
 
-_KINDS = sorted(set(CATALOGUE) | set(ALIASES), key=len, reverse=True)
-_KIND_RE = "|".join(re.escape(k) for k in _KINDS)
 _COLOR_RE = "|".join(COLORS)
 _COUNT_RE = "|".join(NUMBER_WORDS) + r"|\d+"
-# "the red cube", "two apples", "another mug", "cube 2"
-_NOUN = re.compile(
-    rf"\b(?:(?P<det>the|this|that|my|{_COUNT_RE})\s+)?(?:(?P<color>{_COLOR_RE})\s+)?"
-    rf"(?P<kind>{_KIND_RE})(?:s|es)?\b(?!\s+(?:you|i|we|u)\b)(?:\s+(?:number\s+)?(?P<index>\d)\b(?!\s*(?:cm|mm|m\b|\.|\d)))?"
-)
+_EXTRA_KINDS: frozenset = frozenset()
+
+
+def _compile_kinds() -> None:
+    """The object names the rules recognise: the catalogue, its aliases and any extra kinds.
+    Longest first, so "kaioken mug" (a scanned object) wins over "mug"."""
+    global _KINDS, _KIND_RE, _NOUN
+    _KINDS = sorted(set(CATALOGUE) | set(ALIASES) | _EXTRA_KINDS, key=len, reverse=True)
+    _KIND_RE = "|".join(re.escape(k) for k in _KINDS)
+    # "the red cube", "two apples", "another mug", "cube 2"
+    _NOUN = re.compile(
+        rf"\b(?:(?P<det>the|this|that|my|{_COUNT_RE})\s+)?(?:(?P<color>{_COLOR_RE})\s+)?"
+        rf"(?P<kind>{_KIND_RE})(?:s|es)?\b(?!\s+(?:you|i|we|u)\b)(?:\s+(?:number\s+)?(?P<index>\d)\b(?!\s*(?:cm|mm|m\b|\.|\d)))?"
+    )
+
+
+def set_extra_kinds(kinds) -> None:
+    """Object names to recognise besides the catalogue, such as objects scanned with the webcam
+    ("kaioken mug"); without this the rules would read "a kaioken mug" as a plain mug."""
+    global _EXTRA_KINDS
+    extra = frozenset(" ".join(k.lower().split()) for k in kinds if k and k.strip())
+    if extra != _EXTRA_KINDS:
+        _EXTRA_KINDS = extra
+        _compile_kinds()
+
+
+_compile_kinds()
 _PRONOUN = re.compile(r"\b(it|them|that one|this one|that|this)\b")
 _FILLER = re.compile(
     r"\b(please|kindly|hey|hi|hello|ok|okay|robot|now|just|then|also|for me|thanks|thank you|"
