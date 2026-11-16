@@ -294,6 +294,23 @@ export class Viewer {
     if (t < 1) requestAnimationFrame(() => this._grow(entry));
   }
 
+  // The average of the darker half of a point cloud's colours.
+  _darkColour(geometry) {
+    const colour = geometry.getAttribute("color");
+    if (!colour) return new THREE.Color(0x202020);
+    const n = colour.count, lum = new Float32Array(n);
+    for (let i = 0; i < n; i++) lum[i] = 0.2126 * colour.getX(i) + 0.7152 * colour.getY(i) + 0.0722 * colour.getZ(i);
+    const median = Float32Array.from(lum).sort()[n >> 1];
+    const sum = [0, 0, 0];
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      if (lum[i] > median) continue;
+      sum[0] += colour.getX(i); sum[1] += colour.getY(i); sum[2] += colour.getZ(i);
+      count++;
+    }
+    return new THREE.Color().setRGB(sum[0] / count, sum[1] / count, sum[2] / count);
+  }
+
   _dispose(entry) {
     entry.group.remove(entry.group.userData.label);
     this.scene.remove(entry.group);
@@ -332,22 +349,22 @@ export class Viewer {
           : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
         model.position.sub(centre);
         holder.scale.setScalar(scale);
-        let points = false;
+        let points = null;
         model.traverse((m) => {
           if (m.isMesh) m.castShadow = m.receiveShadow = true;
           if (m.isPoints) {
-            // A point cloud (such as a Gaussian splat turned into points): dots about 1.4 mm
-            // wide, so the surface looks closed at the distances the scene is seen from.
-            points = true;
-            m.material.size = 0.0014;
+            // A point cloud (such as a Gaussian splat turned into points): dots about 2 mm wide.
+            points = m;
+            m.material.size = 0.002;
             m.material.sizeAttenuation = true;
           }
         });
         if (points) {
-          // Points cast no shadow: keep the basic shape, invisible, to cast it.
-          shape.material = shape.material.clone();
-          shape.material.colorWrite = false;
-          shape.material.depthWrite = false;
+          // Points leave gaps and cast no shadow. The basic shape stays inside them, a little
+          // smaller, in the model's darkest colour: the gaps show the object, not the table.
+          shape.scale.setScalar(0.93);
+          shape.material.color.copy(this._darkColour(points.geometry));
+          shape.material.roughness = 0.35;
         } else {
           group.remove(shape);
         }
