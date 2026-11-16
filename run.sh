@@ -11,6 +11,8 @@ Usage: ./run.sh [options]        start (builds the images the first time)
 
 Options
   --host-ollama   use the Ollama app already running on this computer (fast on a Mac or a GPU PC)
+  --ollama URL    use Ollama on another computer, e.g. --ollama http://gaming-pc.local:11434
+                  (or set OLLAMA_URL in .env; docs/hardware-and-gpus.md shows how to serve it)
   --nim           use NVIDIA NIM in the cloud as language model (needs NVIDIA_API_KEY in .env)
   --no-llm        no language model at all: only the built-in rules understand commands
   --voice         also start local speech-to-text (Whisper); without it the browser's own is used
@@ -27,6 +29,8 @@ profiles=()
 build=()
 llm="container"
 [ -f .env ] && set -a && . ./.env && set +a
+# An OLLAMA_URL in .env means "use that Ollama": no need to start one in a container.
+if [ -n "${OLLAMA_URL:-}" ]; then llm="remote"; fi
 
 case "${1:-}" in
   stop) "${compose[@]}" --profile ollama --profile voice down; exit 0 ;;
@@ -37,6 +41,8 @@ esac
 while [ $# -gt 0 ]; do
   case "$1" in
     --host-ollama) llm="host" ;;
+    --ollama) [ $# -gt 1 ] || { echo "--ollama needs a URL, e.g. http://192.168.1.50:11434"; exit 1; }
+              llm="remote"; export OLLAMA_URL="$2"; shift ;;
     --nim) llm="nim" ;;
     --no-llm) llm="none" ;;
     --voice) profiles+=(--profile voice) ;;
@@ -57,6 +63,22 @@ case "$llm" in
           echo "Set NVIDIA_API_KEY (or OPENAI_API_KEY) in .env first: https://build.nvidia.com"; exit 1
         fi ;;
   none) export OLLAMA_URL="http://127.0.0.1:9" ;;
+  remote)
+    OLLAMA_URL="${OLLAMA_URL%/}"
+    # Containers often cannot resolve names like gaming-pc.local, so resolve them here.
+    name=$(printf '%s' "$OLLAMA_URL" | sed -E 's#^[a-z]+://([^/:]+).*#\1#')
+    if ! printf '%s' "$name" | grep -Eq '^[0-9.]+$'; then
+      ip=$( (getent ahostsv4 "$name" 2>/dev/null || true) | awk 'NR==1{print $1}')
+      [ -z "$ip" ] && ip=$( (dscacheutil -q host -a name "$name" 2>/dev/null || true) | awk '/^ip_address/{print $2; exit}')
+      if [ -n "$ip" ]; then OLLAMA_URL="${OLLAMA_URL/$name/$ip}"; fi
+    fi
+    export OLLAMA_URL
+    if curl -fsS --max-time 5 "$OLLAMA_URL/api/version" >/dev/null 2>&1; then
+      echo "Language model: Ollama at $OLLAMA_URL (${OLLAMA_MODEL:-default model})"
+    else
+      echo "Warning: no Ollama answers at $OLLAMA_URL. Simple commands will work; free-form ones"
+      echo "will not until it does. Check: curl $OLLAMA_URL/api/version"
+    fi ;;
 esac
 
 extra=()
