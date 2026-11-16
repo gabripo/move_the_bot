@@ -1,12 +1,14 @@
 """Find a 3D model (GLB file) to draw an object with.
 
-Order: your own models (models/local, never committed), the models shipped with the repo, then
-the download cache, then Sketchfab (only when a SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
+Order: your own models (models/local, never committed), objects scanned with the webcam (the
+optional scanner, see docker/scan_server.py), the models shipped with the repo, then the download
+cache, then Sketchfab (only when a SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
 a missing model never blocks the robot.
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -78,19 +80,50 @@ def _from_sketchfab(name: str, api_key: str, target: Path) -> bool:
     return False
 
 
+def cache_file(kind: str, models_dir: str) -> Path:
+    """Where the model of `kind` is kept in the cache (downloaded or scanned)."""
+    return Path(models_dir) / "cache" / f"{_slug(kind)}_{hashlib.md5(kind.encode()).hexdigest()[:8]}.glb"
+
+
+def save_scanned(kind: str, glb: bytes, size, models_dir: str) -> str:
+    """Keep a model made from a webcam photo, with the real size of the object (metres:
+    width, depth, height). From now on 'create a <kind>' uses it. Returns its web path."""
+    target = cache_file(kind, models_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_suffix(".part")
+    partial.write_bytes(glb)
+    partial.rename(target)
+    target.with_suffix(".json").write_text(json.dumps(
+        {"kind": kind, "size": [round(float(v), 4) for v in size], "source": "scan"}))
+    return f"/models/cache/{target.name}"
+
+
+def scanned_size(kind: str, models_dir: str):
+    """The size (metres) of a scanned object, or None if `kind` was not scanned."""
+    try:
+        info = json.loads(cache_file(kind, models_dir).with_suffix(".json").read_text())
+        size = tuple(float(v) for v in info["size"])
+        return size if len(size) == 3 and all(0.005 <= v <= 0.5 for v in size) else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
     """Web path of a GLB for `kind` ('/models/builtin/apple.glb'), or '' when there is none."""
     slug = _slug(kind)
     if not slug:
         return ""
     root = Path(models_dir)
-    for folder in ("local", "builtin"):
-        if (root / folder / f"{slug}.glb").is_file():
-            return f"/models/{folder}/{slug}.glb"
-    cache_name = f"{slug}_{hashlib.md5(kind.encode()).hexdigest()[:8]}.glb"
-    cached = root / "cache" / cache_name
+    cached = cache_file(kind, models_dir)
+    scanned = cached.is_file() and scanned_size(kind, models_dir) is not None
+    if (root / "local" / f"{slug}.glb").is_file():
+        return f"/models/local/{slug}.glb"
+    if scanned:                               # your own scan beats the repo's model
+        return f"/models/cache/{cached.name}"
+    if (root / "builtin" / f"{slug}.glb").is_file():
+        return f"/models/builtin/{slug}.glb"
     if cached.is_file() and cached.stat().st_size > 0:
-        return f"/models/cache/{cache_name}"
+        return f"/models/cache/{cached.name}"
     api_key = os.environ.get("SKETCHFAB_API_KEY", "").strip()
     if allow_download and api_key:
         try:
@@ -107,6 +140,7 @@ def clear_cache(models_dir: str) -> int:
     for f in (Path(models_dir) / "cache").glob("*.glb"):
         try:
             f.unlink()
+            f.with_suffix(".json").unlink(missing_ok=True)      # the size of a scanned object
             count += 1
         except OSError:
             pass

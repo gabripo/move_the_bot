@@ -363,11 +363,18 @@ export class Viewer {
           }
         });
         if (points) {
-          // Points leave gaps and cast no shadow. The basic shape stays inside them, a little
-          // smaller, in the model's darkest colour: the gaps show the object, not the table.
-          shape.scale.setScalar(0.85);            // well inside: a splat's surface is a little blurred
-          shape.material.color.copy(this._darkColour(points.geometry));
-          shape.material.roughness = 0.35;
+          // Points leave gaps and cast no shadow. A core in the model's darkest colour sits inside
+          // them, so the gaps show the object, not the table, and it casts the shadow. A cylinder
+          // fits inside round and boxy objects alike; well inside, as a splat's surface is blurred.
+          const core = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.425 * Math.min(sx, sy), 0.425 * Math.min(sx, sy), 0.85 * sz, 32),
+            shape.material);
+          core.rotation.x = Math.PI / 2;
+          core.castShadow = core.receiveShadow = true;
+          core.material.color.copy(this._darkColour(points.geometry));
+          core.material.roughness = 0.35;
+          group.remove(shape);
+          group.add(core);
         } else {
           group.remove(shape);
         }

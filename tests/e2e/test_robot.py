@@ -189,6 +189,21 @@ def test_one_object_at_a_time(robot):
     assert result["state"] == "failed" and "already holds" in result["message"]
 
 
+def test_a_scanned_object_is_created_with_its_size_and_model(robot):
+    # What the optional object scanner leaves behind: a model and the object's size, in the cache.
+    from move_the_bot import models3d
+    model = models3d.save_scanned("test gadget", b"glTF", (0.07, 0.04, 0.06), "/models")
+    try:
+        robot.ok(skill="spawn", object="test gadget", at={"x": 0.24, "y": -0.08})
+        gadget = robot.obj("test gadget")
+        assert gadget["model"] == model
+        assert gadget["size"] == pytest.approx([0.07, 0.04, 0.06])
+        assert gadget["position"][2] == pytest.approx(0.03, abs=0.003)     # standing on the table
+    finally:
+        models3d.cache_file("test gadget", "/models").unlink(missing_ok=True)
+        models3d.cache_file("test gadget", "/models").with_suffix(".json").unlink(missing_ok=True)
+
+
 def test_move_to_and_move_by(robot):
     robot.ok(skill="move_to", at={"x": 0.22, "y": 0.05, "z": 0.12})
     assert near(robot.tool, (0.22, 0.05, 0.12), 0.006)

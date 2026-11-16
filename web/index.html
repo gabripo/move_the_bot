@@ -35,6 +35,19 @@
       </div>
       <p id="view-hint">Drag to look around · scroll to zoom</p>
 
+      <!-- The object scanner (optional, ./run.sh --scan). See scan.js. -->
+      <div id="scan-panel" hidden>
+        <div class="scan-view"><video id="scan-cam" autoplay playsinline muted></video><div class="scan-frame"></div></div>
+        <form id="scan-form" autocomplete="off">
+          <h2>Scan an object</h2>
+          <label>What is it? <input id="scan-name" type="text" placeholder="e.g. stapler" maxlength="30" /></label>
+          <label>How tall? <span><input id="scan-height" type="number" min="2" max="30" step="0.5" value="10" /> cm</span></label>
+          <div class="scan-buttons"><button id="scan-go" type="submit">📷 Scan</button><button id="scan-cancel" type="button">Cancel</button></div>
+          <p id="scan-status" role="status"></p>
+          <p class="scan-note">The photo becomes 3D with <a href="https://speridlabs.com/research/idol" target="_blank" rel="noopener">Idol</a>.</p>
+        </form>
+      </div>
+
       <!-- Recording mode (?rec): what is happening, readable with the sound off. See recording.js. -->
       <div id="rec" hidden>
         <div id="rec-hook"><strong id="rec-hook-1"></strong><span id="rec-hook-2"></span></div>
@@ -100,6 +113,7 @@
         <button id="btn-home" type="button">Home</button>
         <button id="btn-clear" type="button">Clear table</button>
         <button id="btn-stop" type="button" class="danger">Stop</button>
+        <button id="btn-scan" type="button" hidden>📷 Scan</button>
       </div>
 
       <h2>Conversation</h2>

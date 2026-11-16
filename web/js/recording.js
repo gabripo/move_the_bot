@@ -17,7 +17,7 @@ import { openCamera } from "./camera.js";
 const $ = (id) => document.getElementById(id);
 const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
-const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️" };
+const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️", scan: "📷" };
 
 export class Recording {
   constructor({ ros, viewer, params, actions }) {
@@ -87,6 +87,20 @@ export class Recording {
     }
   }
 
+  // The object scanner: a webcam photo on its way to 3D (scan.js).
+  scan(state, info) {
+    if (state === "start") {
+      this._hideHook(1500);
+      this._caption(`📷 Scanning “${info.name}”`, "Idol turns one webcam photo into 3D…");
+      this._flow({ you: ["on", "📷 a photo of the object"] });
+    } else if (state === "done") {
+      this._sub(`3D from one photo in ${info.seconds} s, made by Idol (${info.points.toLocaleString()} points)`);
+      this._flow({ you: ["done", "📷 scanned"] });
+    } else {
+      this._sub(info.message, "error");
+    }
+  }
+
   ready() {
     this._caption("", "");
     this._flow({});
@@ -109,7 +123,7 @@ export class Recording {
       this.sources.delete(key);
       this._hideHook(2500);
       this._caption(`${ICONS[how] || ""} “${text}”`, "");
-      this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button" }[how] || "typed"] });
+      this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button", scan: "📷 scanned" }[how] || "typed"] });
       return;
     }
     if (this.muted) return;
