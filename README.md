@@ -83,18 +83,7 @@ Any OpenAI-compatible endpoint works: see [.env.example](.env.example).
 
 ## How it works
 
-```mermaid
-flowchart LR
-    U["You<br/>text · voice · hand"] --> W["Web app<br/>3D view, speech,<br/>hand tracking"]
-    W -- rosbridge --> A["Agent<br/>rules first,<br/>LLM if needed"]
-    A -- "skills<br/>pick · place · move" --> S["Skill server<br/>inverse kinematics,<br/>scene, teleoperation"]
-    S -- goals --> M["MoveIt 2<br/>collision-aware planning"]
-    M -- trajectories --> C["ros2_control<br/>arm + gripper controllers"]
-    C --> H{"hardware plugin"}
-    H --> H1["mock<br/>(default)"]
-    H --> H2["Isaac Sim"]
-    H --> H3["real SO-101"]
-```
+![System overview: the browser and the robot containers on a laptop, the language model on a GPU PC in the home network, and what ros2_control drives](docs/diagrams/overview.svg)
 
 1. **The web app** shows the robot from its real description (URDF) and sends your words, or
    your hand position, to ROS.
@@ -108,7 +97,8 @@ flowchart LR
 5. **ros2_control** executes the trajectory. What sits below it is a plugin: a simulated arm,
    Isaac Sim, or the real servos.
 
-More detail: [docs/architecture.md](docs/architecture.md).
+More detail, including which computer runs each step:
+[docs/architecture.md](docs/architecture.md).
 
 ## From simulation to a real robot
 
@@ -133,17 +123,20 @@ stack (Isaac Sim, Isaac ROS cuMotion, NIM, GR00T, Jetson) is in
 | [Real hardware](docs/real-hardware.md) | Isaac Sim and the real SO-101, step by step |
 | [NVIDIA stack](docs/nvidia-stack.md) | where Isaac Sim, cuMotion, NIM and GR00T fit |
 | [Hardware and GPUs](docs/hardware-and-gpus.md) | what runs on a Mac, an AMD GPU, an NVIDIA GPU |
-| [Development](docs/development.md) | running without Docker, tests, screenshots, troubleshooting |
+| [Testing](docs/testing.md) | every test on your own computer, step by step |
+| [Development](docs/development.md) | running without Docker, screenshots, troubleshooting |
 
 ## Tests
 
-```bash
-pip install numpy requests pytest && python -m pytest tests/unit      # no ROS needed
-docker compose exec robot /ros_entrypoint.sh pytest /ros_ws/tests/e2e/test_robot.py   # the running stack
-```
+Every test that GitHub runs also runs on your own computer: unit tests, end-to-end tests of the
+real containers, a browser test and the Isaac Sim interface test.
+[docs/testing.md](docs/testing.md) goes through them one by one.
 
-The end-to-end tests drive the real containers: MoveIt plans, the controllers execute, and a
-browser test checks the page. See [docs/development.md](docs/development.md).
+```bash
+python3 -m venv .venv && .venv/bin/pip install numpy requests pytest
+.venv/bin/python -m pytest tests/unit                  # no ROS needed
+docker compose exec -T robot /ros_entrypoint.sh pytest -p no:cacheprovider /ros_ws/tests/e2e/test_robot.py
+```
 
 ## Project layout
 
@@ -157,7 +150,7 @@ web/                  the browser app (three.js, MediaPipe hand tracking)
 models/               small 3D models of the objects
 docker/               Dockerfiles and nginx configuration
 tests/                unit tests, end-to-end tests, screenshot generator
-docs/                 documentation and the generated pictures
+docs/                 documentation, diagrams and the generated pictures
 ```
 
 ## Credits

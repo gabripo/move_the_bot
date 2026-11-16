@@ -2,6 +2,57 @@
 
 How a sentence, or a hand in front of the webcam, becomes motion of the arm.
 
+## Where everything runs
+
+![System overview: the browser and the Docker containers on a laptop, the language model on a GPU PC, and what ros2_control drives](diagrams/overview.svg)
+
+- **The laptop** (any computer with Docker). The browser does everything that needs a screen, a
+  camera or a microphone: the 3D view (three.js), speech recognition and hand tracking
+  (MediaPipe). Docker runs two containers: `web` (nginx) serves the page and forwards the
+  websocket, and `robot` runs every ROS node, from the agent down to ros2_control.
+- **A GPU PC in the same network** (optional). Ollama serves the language model. The agent calls
+  it over HTTP only when its built-in rules do not understand a request. Without it, the model
+  runs in an `ollama` container on the laptop (slow on a CPU), in the Ollama app on the laptop,
+  or in the cloud: see [hardware-and-gpus.md](hardware-and-gpus.md).
+- **Below ros2_control.** The simulated arm runs inside the robot container. Isaac Sim and the
+  real SO-101 replace it with one launch argument; nothing above ros2_control changes.
+
+![Where each step runs: browser, robot container, GPU PC, arm](diagrams/where-it-runs.svg)
+
+### A free-form request, step by step
+
+```mermaid
+sequenceDiagram
+    autonumber
+    box rgb(232, 241, 253) Laptop: browser
+    participant B as Browser
+    end
+    box rgb(255, 248, 230) Laptop: robot container
+    participant A as agent
+    participant S as skill_server
+    participant M as move_group
+    participant C as ros2_control
+    end
+    box rgb(244, 239, 252) GPU PC
+    participant L as Ollama
+    end
+    B->>A: "I'm thirsty" on /voice_commands, through rosbridge
+    A->>A: built-in rules: no match
+    A->>L: /api/chat with the request, the objects on the table and the skills
+    L-->>A: JSON plan: pick the mug, place it at the center (about 1 s)
+    A->>A: validate every skill
+    A->>S: /skill/request: pick the mug
+    S->>S: inverse kinematics for the grasp
+    S->>M: MoveGroup goal with the joint angles
+    M->>C: collision-free trajectory
+    C-->>B: /joint_states, so the 3D view follows
+    S-->>A: /skill/status: succeeded
+    A->>S: /skill/request: place at the center
+    Note over A,C: place runs the same way
+```
+
+## The ROS nodes
+
 ```mermaid
 flowchart TB
     subgraph Browser
