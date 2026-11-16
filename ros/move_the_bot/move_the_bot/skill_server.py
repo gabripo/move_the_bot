@@ -163,13 +163,14 @@ class SkillServer(Node):
         except KeyError:
             return None
 
-    def _wait(self, future, timeout: float, what: str):
-        """Block the worker thread until a future completes (the executor runs it elsewhere)."""
+    def _wait(self, future, timeout: float, what: str, stoppable: bool = True):
+        """Block the worker thread until a future completes (the executor runs it elsewhere).
+        A stop request interrupts the wait, unless `stoppable` is False."""
         done = threading.Event()
         future.add_done_callback(lambda _f: done.set())
         deadline = time.monotonic() + timeout
         while not done.wait(0.05):
-            if self.stop_flag.is_set():
+            if stoppable and self.stop_flag.is_set():
                 raise Stopped()
             if time.monotonic() > deadline:
                 raise SkillError(f"{what} did not answer")
@@ -178,6 +179,8 @@ class SkillServer(Node):
     def _status(self, request: dict, state: str, message: str = "") -> None:
         msg = {"id": request.get("id", ""), "skill": request.get("skill", ""), "state": state,
                "message": message, "description": describe(request)}
+        if state != "running":
+            self._publish_state()           # whoever reads the result also gets the final pose
         self.status_pub.publish(String(data=json.dumps(msg)))
         line = f"[{state}] {msg['description']}{': ' + message if message else ''}"
         if state == "failed":
@@ -331,25 +334,60 @@ class SkillServer(Node):
             goal.planning_options.planning_scene_diff.is_diff = True
             goal.planning_options.planning_scene_diff.robot_state.is_diff = True
 
-            handle = self._wait(self.move_client.send_goal_async(goal), 10.0, "MoveIt")
+            # Not stoppable: a goal must never be left running without our knowing its handle.
+            handle = self._wait(self.move_client.send_goal_async(goal), 10.0, "MoveIt", stoppable=False)
             if not handle.accepted:
                 raise SkillError("MoveIt rejected the motion")
             self.goal_handle = handle
+            result_future = handle.get_result_async()
             try:
-                result = self._wait(handle.get_result_async(), 40.0, "MoveIt").result
-            except Stopped:
-                handle.cancel_goal_async()
+                if self.stop_flag.is_set():         # the stop came while the goal was being sent
+                    raise Stopped()
+                result = self._wait(result_future, 40.0, "MoveIt").result
+            except (Stopped, SkillError):
+                self._cancel_and_settle(handle, result_future)
                 raise
             finally:
                 self.goal_handle = None
             code = result.error_code.val
             if code == MoveItErrorCodes.SUCCESS:
+                self._wait_until_at(q)
                 return
             if code == MoveItErrorCodes.PREEMPTED or self.stop_flag.is_set():
                 raise Stopped()
             last_error = ERROR_TEXT.get(code, f"MoveIt error {code}")
             self.get_logger().info(f"{pipeline}: {last_error}")
         raise SkillError(f"cannot {what}: {last_error}")
+
+    def _wait_until_at(self, q, timeout: float = 0.5, tolerance: float = 0.02) -> None:
+        """Wait until the joint states this node has received show the arm at `q`.
+
+        MoveIt reports success as soon as the controller is done, but this node's /joint_states
+        can be a few messages behind when its executor is busy. Without this wait, the tool
+        position and the held object were sometimes published from before the end of the motion.
+        """
+        target = np.array(q)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            now = self._arm_q()
+            if now is not None and np.abs(now - target).max() < tolerance:
+                return
+            time.sleep(0.02)
+
+    def _cancel_and_settle(self, handle, result_future) -> None:
+        """Cancel a MoveIt goal and wait until MoveIt has really finished it.
+
+        MoveIt must be done with a cancelled goal before it receives the next one. move_group
+        (2.12) keeps a single "preempt requested" flag: a goal that arrives while the previous
+        one is still being cancelled is cancelled as well, from a state that does not allow it,
+        and move_group aborts ("invalid transition from state EXECUTING with event CANCELED").
+        A stop followed at once by another command, such as Stop and then Home, did exactly that.
+        """
+        handle.cancel_goal_async()
+        try:
+            self._wait(result_future, 5.0, "MoveIt", stoppable=False)
+        except SkillError:
+            self.get_logger().warn("MoveIt did not confirm the end of the cancelled motion")
 
     def _solve(self, point, pitches=None, seed=None):
         """Inverse kinematics for a tool position; raises SkillError when out of reach."""
@@ -693,18 +731,19 @@ class SkillServer(Node):
             self.busy, self.current = True, request
             self._status(request, "running")
             try:
-                message = handlers[request["skill"]](request)
-                self._status(request, "succeeded", message)
+                outcome = ("succeeded", handlers[request["skill"]](request))
             except Stopped:
-                self._status(request, "stopped", "stopped")
+                outcome = ("stopped", "stopped")
             except SkillError as e:
-                self._status(request, "failed", str(e))
+                outcome = ("failed", str(e))
             except Exception as e:  # noqa: BLE001  a bug in one skill must not kill the robot
                 self.get_logger().error(f"Skill crashed: {e!r}")
-                self._status(request, "failed", f"internal error: {e}")
+                outcome = ("failed", f"internal error: {e}")
             finally:
                 self.busy, self.current = False, None
                 self._teleop_restart = True     # teleoperation resumes from where the arm is now
+            # Not busy any more before the result goes out: the state published with it says so.
+            self._status(request, *outcome)
 
     # ------------------------------------------------------------- callbacks
 
