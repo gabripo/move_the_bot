@@ -308,7 +308,8 @@ export class Viewer {
       sum[0] += colour.getX(i); sum[1] += colour.getY(i); sum[2] += colour.getZ(i);
       count++;
     }
-    return new THREE.Color().setRGB(sum[0] / count, sum[1] / count, sum[2] / count);
+    // Darker still: the brightest of these are highlights and reflections, not the material.
+    return new THREE.Color().setRGB(sum[0] / count, sum[1] / count, sum[2] / count).multiplyScalar(0.45);
   }
 
   _dispose(entry) {
