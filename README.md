@@ -26,6 +26,7 @@ Everything runs on your own computer in Docker, including the language model.
 | **Use your hand** | Your webcam tracks one hand: the gripper follows it, a pinch grabs |
 | **Mix them** | Steer by hand and say "create an apple here" |
 | **Ask freely** | "I'm thirsty", "tidy up": a language model plans the steps |
+| **Bring your own object** | One photo of your mug becomes its 3D model, made by [Idol](https://speridlabs.com/research/idol): see [your own objects](docs/your-own-objects.md) |
 
 | Objects from one sentence | Pick and place, planned by MoveIt |
 |---|---|
