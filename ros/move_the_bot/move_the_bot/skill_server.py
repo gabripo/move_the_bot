@@ -28,8 +28,7 @@ from moveit_msgs.msg import (AttachedCollisionObject, CollisionObject, Constrain
                              JointConstraint, MoveItErrorCodes, PlanningScene)
 from moveit_msgs.srv import ApplyPlanningScene
 from rclpy.action import ActionClient
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import JointState
@@ -117,10 +116,8 @@ class SkillServer(Node):
         self.teleop_q = None
         self.teleop_gripper = None
         self.hand = None                    # last hand position, for "put it here"
-        self._teleop_lock = threading.Lock()
         self._teleop_restart = True
 
-        group = ReentrantCallbackGroup()
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.status_pub = self.create_publisher(String, "/skill/status", 20)
         self.state_pub = self.create_publisher(String, "/skill/state", 5)
@@ -128,23 +125,25 @@ class SkillServer(Node):
         self.arm_pub = self.create_publisher(JointTrajectory, "/arm_controller/joint_trajectory", 5)
         self.gripper_pub = self.create_publisher(JointTrajectory, "/gripper_controller/joint_trajectory", 5)
 
-        self.create_subscription(JointState, "/joint_states", self._on_joints, 20, callback_group=group)
-        self.create_subscription(String, "/skill/request", self._on_request, 50, callback_group=group)
-        self.create_subscription(Bool, "/teleop/enable", self._on_teleop_enable, 5, callback_group=group)
-        self.create_subscription(Point, "/teleop/target", self._on_teleop_target, 5, callback_group=group)
-        self.create_subscription(Float32, "/teleop/gripper", self._on_teleop_gripper, 5, callback_group=group)
+        # Every callback here is short. Work that blocks or computes for long (skills, the
+        # teleoperation steps) runs in threads of its own; see main() for why.
+        self.create_subscription(JointState, "/joint_states", self._on_joints, 20)
+        self.create_subscription(String, "/skill/request", self._on_request, 50)
+        self.create_subscription(Bool, "/teleop/enable", self._on_teleop_enable, 5)
+        self.create_subscription(Point, "/teleop/target", self._on_teleop_target, 5)
+        self.create_subscription(Float32, "/teleop/gripper", self._on_teleop_gripper, 5)
 
-        self.move_client = ActionClient(self, MoveGroup, "/move_action", callback_group=group)
+        self.move_client = ActionClient(self, MoveGroup, "/move_action")
         self.gripper_client = ActionClient(
-            self, FollowJointTrajectory, "/gripper_controller/follow_joint_trajectory", callback_group=group)
-        self.scene_client = self.create_client(ApplyPlanningScene, "/apply_planning_scene", callback_group=group)
+            self, FollowJointTrajectory, "/gripper_controller/follow_joint_trajectory")
+        self.scene_client = self.create_client(ApplyPlanningScene, "/apply_planning_scene")
 
-        self.create_timer(0.2, self._publish_state, callback_group=group)
-        self.create_timer(0.05, self._follow_held, callback_group=group)
-        self.create_timer(1.0 / TELEOP_RATE, self._teleop_tick, callback_group=group)
+        self.create_timer(0.2, self._publish_state)
+        self.create_timer(0.05, self._follow_held)
         self._last_scene = 0.0
 
         threading.Thread(target=self._worker, daemon=True).start()
+        threading.Thread(target=self._teleop_loop, daemon=True).start()
         self.get_logger().info("Skill server started")
 
     # ------------------------------------------------------------- utilities
@@ -783,17 +782,26 @@ class SkillServer(Node):
     def _on_teleop_gripper(self, msg: Float32) -> None:
         self.teleop_gripper = max(0.0, min(1.0, float(msg.data)))
 
-    def _teleop_tick(self) -> None:
-        if not self.teleop or self.busy or self.teleop_target is None:
-            return
-        if not self._teleop_lock.acquire(blocking=False):
-            return                              # the previous tick is still running
-        try:
-            self._teleop_step()
-        except Exception as e:  # noqa: BLE001  a bad tick must never take the robot down
-            self.get_logger().error(f"Teleoperation step failed: {e!r}", throttle_duration_sec=2.0)
-        finally:
-            self._teleop_lock.release()
+    def _teleop_loop(self) -> None:
+        """Teleoperation steps, TELEOP_RATE times a second, in a thread of their own.
+
+        Not an executor timer: a step solves inverse kinematics in Python (15-30 ms), and
+        grasping waits for the planning scene service, whose answer the executor must deliver.
+        """
+        period = 1.0 / TELEOP_RATE
+        next_tick = time.monotonic()
+        while rclpy.ok():
+            if self.teleop and not self.busy and self.teleop_target is not None:
+                try:
+                    self._teleop_step()
+                except Exception as e:  # noqa: BLE001  a bad tick must never take the robot down
+                    self.get_logger().error(f"Teleoperation step failed: {e!r}", throttle_duration_sec=2.0)
+            next_tick += period
+            delay = next_tick - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                next_tick = time.monotonic()    # running late: do not try to catch up
 
     def _teleop_step(self) -> None:
         if time.monotonic() - self.teleop_target_time > 0.5:
@@ -823,6 +831,8 @@ class SkillServer(Node):
 
         if distance > 0.002:
             result = self.chain.solve(target, seed=self.teleop_q, iterations=40, tolerance=0.004)
+            if not self.teleop or self.busy:
+                return                          # switched off, or a skill started, meanwhile
             if result is not None:
                 change = result.joints - self.teleop_q
                 biggest = float(np.abs(change).max())
@@ -868,7 +878,10 @@ class SkillServer(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = SkillServer()
-    executor = MultiThreadedExecutor(num_threads=6)
+    # Single-threaded on purpose. With the 100 Hz /joint_states, rclpy's MultiThreadedExecutor
+    # (Jazzy) kept a core busy and the GIL taken almost all the time: an inverse-kinematics step
+    # that takes 15 ms on its own then took up to 1.8 s, and hand teleoperation stalled.
+    executor = SingleThreadedExecutor()
     executor.add_node(node)
     try:
         executor.spin()
