@@ -104,6 +104,25 @@ if (process.env.CHECK_HAND_TRACKING === "1") {
   });
 }
 
+// The optional object scanner (./run.sh --scan). In CI it runs with IDOL_BACKEND=file, so the
+// browser's fake camera, the upload, the conversion and "create a <name>" are all real.
+if (process.env.CHECK_SCAN === "1") {
+  await check("scan: a webcam photo becomes an object on the table", async () => {
+    await page.waitForSelector("#btn-scan:not([hidden])", { timeout: 10000 });
+    await page.click("#btn-scan");
+    await page.waitForFunction(() => document.getElementById("scan-cam").videoWidth > 0, null, { timeout: 10000 });
+    await page.fill("#scan-name", "Stapler");
+    await page.fill("#scan-height", "8");
+    await page.click("#scan-go");
+    await page.waitForFunction(() => window.mtb.objects.some((o) => o.name === "stapler"), null, { timeout: 120000 });
+    const stapler = await object(page, "stapler");
+    assert.match(stapler.model, /^\/models\/cache\/stapler_.*\.glb$/);
+    assert.ok(Math.abs(stapler.size[2] - 0.08) < 0.001, `height ${stapler.size[2]}`);
+    assert.ok(await page.evaluate(() => document.getElementById("scan-panel").hidden), "the panel closes");
+  });
+  await sayAndWait(page, "clear the table");
+}
+
 await check("no JavaScript errors on the page", async () => {
   const real = problems.filter((p) => !/favicon|GPU stall|ReadPixels/.test(p));
   assert.deepEqual(real, []);

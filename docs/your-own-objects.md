@@ -1,6 +1,7 @@
 # Your own objects, from one photo
 
-Put your own mug, or any small object, on the robot's table: one photo becomes its 3D model.
+Put your own mug, or any small object, on the robot's table: one photo becomes its 3D model,
+from a file or live from the webcam.
 The photo is turned into 3D by **Idol**, an open image-to-3D model by Speridlabs
 ([research page](https://speridlabs.com/research/idol) ·
 [code](https://github.com/speridlabs/idol-sdk) ·
@@ -57,6 +58,86 @@ Hugging Face):
 ```bash
 python -m idol.sample --image my-mug.jpg --mode real
 python3 scripts/photo_to_3d.py --ply my-mug.ply --name mug
+```
+
+## Scan with the webcam (optional)
+
+The same idea, live: show an object to the webcam and it joins the table. It is off by default;
+start it with:
+
+```bash
+./run.sh --scan
+```
+
+A **📷 Scan** button appears next to Stop.
+
+1. Click it and hold the object inside the square, ideally in front of a plain background.
+2. Type what it is ("stapler") and how tall it is: a photo cannot tell how big something is.
+   Width and depth follow from the model's proportions.
+3. Click **Scan**. The photo goes to the scanner (`docker/scan_server.py`), Idol makes the 3D
+   object, and the page says "create a stapler". Afterwards "create a stapler" works any time,
+   without scanning again.
+
+The robot plans and grasps a scanned object as a box of that size, so objects up to about 9 cm
+across fit its gripper. A scan with the name of a built-in object ("apple") replaces the built-in
+model; `models/local` still wins over both.
+
+### Where Idol runs
+
+| `IDOL_BACKEND` | Where Idol runs | Needs |
+|---|---|---|
+| `demo` (default) | Idol's public demo on Hugging Face | the internet; a short free daily quota, more with `HF_TOKEN` in `.env` |
+| `remote` | a scan server on a GPU PC in your network, at `IDOL_URL` | that PC: the Idol SDK and about 8 GB of video memory |
+| `local` | inside the scanner container | a GPU the container can use and the Idol SDK installed (not in the default image) |
+| `file` | nowhere: always the splat at `IDOL_FILE` | nothing; for tests and offline demos |
+
+### Why not Ollama
+
+Ollama serves language models (GGUF files run by llama.cpp). Idol is a different kind of model: a
+diffusion transformer with an image encoder, a background remover and decoders that output 3D
+Gaussians, all in PyTorch. So it gets its own small server, which you can run next to Ollama on
+the same GPU PC.
+
+### A scan server on your GPU PC
+
+On the GPU PC (Linux, Python 3.10+, PyTorch with GPU support). Idol's weights download on the
+first scan (about 3 GB); it reads images through two gated models, so accept their terms with your
+Hugging Face account first:
+[DINOv3](https://huggingface.co/facebook/dinov3-vith16plus-pretrain-lvd1689m) and
+[FLUX.2-dev](https://huggingface.co/black-forest-labs/FLUX.2-dev) (only its VAE is used; check
+both licences for your use).
+
+```bash
+git clone https://github.com/speridlabs/idol-sdk && pip install -e idol-sdk
+pip install fastapi uvicorn python-multipart numpy requests
+hf auth login
+git clone https://github.com/gabripo/move_the_bot && mkdir -p ~/idol-scan
+cp move_the_bot/docker/scan_server.py move_the_bot/scripts/photo_to_3d.py \
+   move_the_bot/ros/move_the_bot/move_the_bot/{models3d,world}.py ~/idol-scan/
+cd ~/idol-scan && IDOL_BACKEND=local MODELS_DIR=/tmp/idol-scan uvicorn scan_server:app --host 0.0.0.0 --port 8001
+```
+
+On the computer that runs move_the_bot, in `.env`:
+
+```bash
+IDOL_BACKEND=remote
+IDOL_URL=http://192.168.1.50:8001
+```
+
+Then `./run.sh --scan`. Like Ollama, the server has no password: use it only in a network you
+trust. Idol's authors run it on NVIDIA GPUs (CUDA) and Apple Silicon; on an AMD GPU, PyTorch's
+ROCm build may work, but this has not been tried here.
+
+### Testing the scanner
+
+Without Idol: a synthetic splat stands in for it, so the camera, the upload, the conversion and
+"create a …" are all tested (GitHub does this on every pull request).
+
+```bash
+python3 tests/e2e/make_test_splat.py test-splat.ply
+docker compose cp test-splat.ply robot:/models/cache/test-splat.ply
+IDOL_BACKEND=file IDOL_FILE=/models/cache/test-splat.ply docker compose --profile scan up -d --build scan
+cd tests/e2e && CHECK_SCAN=1 node browser_test.mjs
 ```
 
 ## A good photo
