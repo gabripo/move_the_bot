@@ -28,7 +28,8 @@ export class Recording {
     this.settle = null;
     this.hookTimer = null;
     this.llmPc = params.get("llmpc") || "my gaming PC";
-    this.setup = (params.get("setup") || "clear the table;create a mug, a soda can and an apple")
+    this.setup = (params.get("setup")
+      || "clear the table;create a mug on the left;create a soda can on the right;create an apple in front")
       .split(";").map((s) => s.trim()).filter(Boolean);
 
     document.body.classList.add("rec");
