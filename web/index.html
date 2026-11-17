@@ -37,14 +37,25 @@
 
       <!-- The object scanner (optional, ./run.sh --scan). See scan.js. -->
       <div id="scan-panel" hidden>
-        <div class="scan-view"><video id="scan-cam" autoplay playsinline muted></video><div class="scan-frame"></div></div>
+        <div class="scan-view">
+          <video id="scan-cam" autoplay playsinline muted></video><div class="scan-frame"></div>
+          <div id="scan-overlay"></div><div id="scan-flash"></div>
+          <div id="scan-bar"><div id="scan-progress"></div></div>
+          <div id="scan-thumbs"></div>
+        </div>
         <form id="scan-form" autocomplete="off">
           <h2>Scan an object</h2>
           <label>What is it? <input id="scan-name" type="text" placeholder="e.g. stapler" maxlength="30" /></label>
           <label>How tall? <span><input id="scan-height" type="number" min="2" max="30" step="0.5" value="10" /> cm</span></label>
-          <div class="scan-buttons"><button id="scan-go" type="submit">📷 Scan</button><button id="scan-cancel" type="button">Cancel</button></div>
+          <fieldset class="scan-modes">
+            <legend>The camera takes</legend>
+            <label><input type="radio" name="scan-mode" value="photo" id="scan-mode-photo" /> 1 photo <small>fastest · Idol guesses the back</small></label>
+            <label><input type="radio" name="scan-mode" value="sides" id="scan-mode-sides" checked /> 4 sides <small>a quarter turn between photos</small></label>
+            <label><input type="radio" name="scan-mode" value="video" id="scan-mode-video" /> Video <small>one slow turn, about 8 s</small></label>
+          </fieldset>
+          <div class="scan-buttons"><button id="scan-go" type="submit">📷 Start</button><button id="scan-cancel" type="button">Cancel</button></div>
           <p id="scan-status" role="status"></p>
-          <p class="scan-note">The photo becomes 3D with <a href="https://speridlabs.com/research/idol" target="_blank" rel="noopener">Idol</a>.</p>
+          <p class="scan-note">Also starts with Space, a 👍 to the camera, or saying “scan my mug”. The photos become 3D with <a href="https://speridlabs.com/research/idol" target="_blank" rel="noopener">Idol</a>.</p>
         </form>
       </div>
 

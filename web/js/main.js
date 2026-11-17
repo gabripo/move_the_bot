@@ -12,6 +12,7 @@ const wsUrl = params.get("ws")
 
 const ros = new Ros(wsUrl);
 let rec = null;                 // recording mode (?rec), set up at the end
+let scanner = null;             // the object scanner, set up at the end
 const viewer = new Viewer($("viewer"));
 // Handles for automated tests and for recording demos without a camera (filled in below).
 window.mtb = { ros, viewer, objects: [], state: {}, agent: {} };
@@ -46,9 +47,11 @@ function send(text) {
 
 $("command-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  rec?.source($("command").value, "text");
-  send($("command").value);
+  const text = $("command").value;
   $("command").value = "";
+  if (scanner?.command(text)) { $("command").blur(); return; }   // "scan my mug", "next": for the scanner (Space then works too)
+  rec?.source(text, "text");
+  send(text);
 });
 $("examples").addEventListener("click", (event) => {
   if (event.target.tagName === "BUTTON") send(event.target.textContent);
@@ -146,7 +149,11 @@ ros.subscribe("/skill/status", "std_msgs/String", (msg) => {
 // ------------------------------------------------------------------ voice
 
 const speech = new Speech({
-  onText: (text) => { rec?.source(text, "voice"); send(text); },
+  onText: (text) => {
+    if (scanner?.command(text)) return;
+    rec?.source(text, "voice");
+    send(text);
+  },
   onState: (state) => {
     $("mic").setAttribute("aria-pressed", state === "listening" ? "true" : "false");
     $("mic").classList.toggle("busy", state === "transcribing");
@@ -219,10 +226,11 @@ Object.assign(window.mtb, {
 });
 
 // The object scanner: its button only appears when the scan service runs (./run.sh --scan).
-new Scanner({
+scanner = new Scanner({
   send: (text) => { rec?.source(text, "scan"); send(text); },
   onEvent: (state, info) => rec?.scan(state, info),
 });
+window.mtb.scanner = scanner;
 
 if (params.has("rec")) {
   rec = new Recording({ ros, viewer, params, actions: {

@@ -87,17 +87,36 @@ export class Recording {
     }
   }
 
-  // The object scanner: a webcam photo on its way to 3D (scan.js).
+  // The object scanner (scan.js): the webcam takes the photos, then Idol turns them into 3D.
+  // When Idol runs on the GPU PC, that PC's box shows its progress, photo by photo.
   scan(state, info) {
-    if (state === "start") {
+    const photos = (n) => (n > 1 ? `${n} photos` : "one photo");
+    const IDOL = "Idol · photos → 3D";
+    if (state === "capture") {
       this._hideHook(1500);
-      this._caption(`📷 Scanning “${info.name}”`, "Idol turns one webcam photo into 3D…");
-      this._flow({ you: ["on", "📷 a photo of the object"] });
+      const how = info.mode === "video" ? "a short video, one slow turn" : info.shots > 1 ? "4 sides, a quarter turn each" : "one photo";
+      this._caption(`📷 Scanning “${info.name}”`, `The webcam takes ${how}`);
+      const now = info.mode === "video" ? `🎥 one turn${info.shot ? ` · side ${info.shot} of 4` : ""}`
+        : info.shots > 1 ? `📷 photo ${info.shot} of ${info.shots}` : "📷 a photo";
+      this._flow({ you: ["on", now] });
+    } else if (state === "start") {
+      this.scanSub = "";
+      const gpu = ["remote", "local"].includes(info.backend);
+      this._flow({ you: ["done", `📷 ${photos(info.views)}`], llm: gpu ? ["on", "receiving the photos…", IDOL] : ["skip", "not needed"] });
+      this._sub(gpu ? `Idol, an open image-to-3D model, turns ${photos(info.views)} into 3D on ${this.llmPc}'s GPU…`
+        : `Idol turns ${photos(info.views)} into 3D…`, gpu ? "llm" : "");
+    } else if (state === "progress") {
+      if (!info.onGpu) return;
+      const what = info.step === "idol" && info.views > 1 ? `photo ${info.view} of ${info.views}` : info.text.toLowerCase();
+      this._flow({ llm: ["on", `${what} · ${Math.round(info.seconds || 0)} s`, IDOL] }, true);
     } else if (state === "done") {
-      this._sub(`3D from one photo in ${info.seconds} s, made by Idol (${info.points.toLocaleString()} points)`);
-      this._flow({ you: ["done", "📷 scanned"] });
+      this.scanSub = `3D from ${photos(info.views)} in ${info.seconds} s, made by Idol${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
+        + ` (${info.points.toLocaleString()} points)`;
+      this._sub(this.scanSub, info.onGpu ? "llm" : "");
+      this._flow({ you: ["done", "📷 scanned"], ...(info.onGpu ? { llm: ["done", `${photos(info.views)} → 3D in ${Math.round(info.seconds)} s`, IDOL] } : {}) }, true);
     } else {
       this._sub(info.message, "error");
+      this._flow({ you: ["done", "📷 scan failed"] });
     }
   }
 
@@ -122,8 +141,13 @@ export class Recording {
       if (this.teleop && how === "voice") how = "voice+hand";
       this.sources.delete(key);
       this._hideHook(2500);
+      if (how === "scan") {           // the scanner places what it made: keep its result in view
+        this._caption(`${ICONS.scan} “${text}”`, this.scanSub || "");
+        this._flow({ you: ["done", "📷 scanned"] }, true);
+        return;
+      }
       this._caption(`${ICONS[how] || ""} “${text}”`, "");
-      this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button", scan: "📷 scanned" }[how] || "typed"] });
+      this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button" }[how] || "typed"] });
       return;
     }
     if (this.muted) return;
@@ -213,7 +237,8 @@ export class Recording {
     $("rec-caption-sub").className = kind;
   }
 
-  // nodes: {you|brain|llm|arm: [state, text]}; others go back to rest unless `keep`.
+  // nodes: {you|brain|llm|arm: [state, text, title?]}; others go back to rest unless `keep`.
+  // The GPU PC's box is the language model's, or Idol's while a scan runs there (its title).
   _flow(nodes, keep = false) {
     const rest = { you: "voice · text · hand", brain: "rules · inverse kinematics · MoveIt 2",
       llm: this.llmRest, arm: "simulated" };
@@ -223,9 +248,11 @@ export class Recording {
       if (nodes[name]) {
         el.className = `node ${name} ${nodes[name][0]}`.trim();
         span.textContent = nodes[name][1];
+        if (name === "llm") el.querySelector("b").textContent = nodes.llm[2] || "Open LLM, at home";
       } else if (!keep) {
         el.className = `node ${name}`;
         span.textContent = rest[name];
+        if (name === "llm") el.querySelector("b").textContent = "Open LLM, at home";
       }
     }
   }

@@ -61,6 +61,11 @@ The model also frees the GPU's memory by itself 10 minutes after the last reques
 shows the model on the CPU instead of the GPU, try the Vulkan back-end:
 `OLLAMA_IMAGE=docker.io/ollama/ollama:latest ollama-server install`.
 
+The same PC can also turn webcam photos into 3D objects ([idol-server.sh](your-own-objects.md#a-scan-server-on-your-gpu-pc)).
+`ai-switch off` stops both servers and keeps them off after a reboot, so nothing uses the GPU's
+compute (ROCm) while you play; `ai-switch on` brings them back
+([how to install it](your-own-objects.md#switching-all-ai-off-on-the-gpu-pc)).
+
 **On the computer that runs move_the_bot**, with the address from `hostname -I`:
 
 ```bash
