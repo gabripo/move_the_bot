@@ -63,7 +63,8 @@ shows the model on the CPU instead of the GPU, try the Vulkan back-end:
 
 The same PC can also turn webcam photos into 3D objects ([idol-server.sh](your-own-objects.md#a-scan-server-on-your-gpu-pc)).
 `ai-switch off` stops both servers and keeps them off after a reboot, so nothing uses the GPU's
-compute (ROCm) while you play; `ai-switch on` brings them back
+compute (ROCm) while you play; `ai-switch on` brings them back. By default they also stop
+whenever Steam's Gaming Mode starts and come back in Desktop Mode
 ([how to install it](your-own-objects.md#switching-all-ai-off-on-the-gpu-pc)).
 
 **On the computer that runs move_the_bot**, with the address from `hostname -I`:

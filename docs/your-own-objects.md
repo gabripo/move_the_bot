@@ -171,16 +171,25 @@ switches both servers, Ollama and the scan server, off and on together:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ai-switch/ai-switch.sh
-bash ai-switch.sh install     # installs `ai-switch` and an "AI services on/off" launcher
-ai-switch off                 # both stopped, neither starts at boot: nothing uses ROCm any more
-ai-switch on                  # both back, with the start-at-boot settings they had before
-ai-switch                     # the other one;  ai-switch status: what runs, who uses the GPU
+bash ai-switch.sh install     # installs `ai-switch`, the Gaming Mode default and a launcher
 ```
 
-`off` also lists any other program still holding the GPU's compute device. The launcher opens a
-terminal (for the password) and toggles; in Steam's Gaming Mode add it with "Add a Non-Steam
-Game". While the AI is off, the robot's computer shows no Scan button and the robot answers
-with its built-in rules only.
+| Command | What it does |
+|---|---|
+| `ai-switch now` (or just `ai-switch`) | on if all is off, off if anything runs: right now, the boot settings stay; no password |
+| `ai-switch off` | both stopped, neither starts at boot: nothing uses ROCm any more; lists any other program still holding the GPU's compute device |
+| `ai-switch on` | both back, with the start-at-boot settings they had before `off` |
+| `ai-switch gaming-mode off` (the default) | entering Steam's **Gaming Mode** stops both; **Desktop Mode** starts again those set to start at boot |
+| `ai-switch gaming-mode keep` | switching modes changes nothing |
+| `ai-switch status` | what runs, what starts at boot, the Gaming Mode setting, who uses the GPU |
+
+So a PC that starts in Gaming Mode has the whole GPU for games, and the AI comes back in Desktop
+Mode. To use it from Gaming Mode anyway, add the launcher **AI services on/off** (it runs
+`ai-switch now`) to Steam with "Add a Non-Steam Game" and start it from the library: it needs no
+keyboard and no password. That works because `install` adds a polkit rule letting your user,
+and only it, start and stop these two services; everything else (`on`, `off`, `gaming-mode`)
+still asks for the password. While the AI is off, the robot's computer shows no Scan button and
+the robot answers with its built-in rules only.
 
 ### Several photos, one object
 
