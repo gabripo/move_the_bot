@@ -97,7 +97,8 @@ await check("hand control: the gripper follows the hand, a pinch grabs", async (
 if (process.env.CHECK_HAND_TRACKING === "1") {
   await check("the hand-tracking model loads in the browser (MediaPipe)", async () => {
     const loaded = await page.evaluate(async () => {
-      const landmarker = await window.mtb.hand._load();
+      const { loadHandLandmarker } = await import("./js/hand.js");
+      const landmarker = await loadHandLandmarker();
       return typeof landmarker.detectForVideo === "function";
     });
     assert.ok(loaded);
@@ -107,18 +108,47 @@ if (process.env.CHECK_HAND_TRACKING === "1") {
 // The optional object scanner (./run.sh --scan). In CI it runs with IDOL_BACKEND=file, so the
 // browser's fake camera, the upload, the conversion and "create a <name>" are all real.
 if (process.env.CHECK_SCAN === "1") {
-  await check("scan: a webcam photo becomes an object on the table", async () => {
+  await check("scan: four sides, started by saying “scan a stapler, 8 cm”, become an object", async () => {
     await page.waitForSelector("#btn-scan:not([hidden])", { timeout: 10000 });
-    await page.click("#btn-scan");
-    await page.waitForFunction(() => document.getElementById("scan-cam").videoWidth > 0, null, { timeout: 10000 });
-    await page.fill("#scan-name", "Stapler");
-    await page.fill("#scan-height", "8");
-    await page.click("#scan-go");
+    await page.fill("#command", "scan a stapler, 8 cm");
+    await page.press("#command", "Enter");
+    await page.waitForFunction(() => !document.getElementById("scan-panel").hidden);
+    assert.equal(await page.inputValue("#scan-name"), "stapler");
+    assert.equal(await page.inputValue("#scan-height"), "8");
+    assert.ok(await page.isChecked("#scan-mode-sides"), "four sides by default with a GPU-less test backend");
+    await page.waitForFunction(() => window.mtb.scanner.state === "capturing", null, { timeout: 10000 });
+    // Space takes each photo without waiting for the countdown.
+    for (let k = 1; k <= 4; k++) {
+      await page.waitForFunction((k) => document.querySelectorAll("#scan-thumbs img").length === k - 1, k);
+      await page.keyboard.press(" ");
+      await page.waitForFunction((k) => document.querySelectorAll("#scan-thumbs img").length >= k, k, { timeout: 5000 });
+    }
     await page.waitForFunction(() => window.mtb.objects.some((o) => o.name === "stapler"), null, { timeout: 120000 });
     const stapler = await object(page, "stapler");
     assert.match(stapler.model, /^\/models\/cache\/stapler_.*\.glb$/);
     assert.ok(Math.abs(stapler.size[2] - 0.08) < 0.001, `height ${stapler.size[2]}`);
     assert.ok(await page.evaluate(() => document.getElementById("scan-panel").hidden), "the panel closes");
+  });
+  await sayAndWait(page, "clear the table");
+
+  await check("scan: a thumbs-up to the camera starts it; one photo", async () => {
+    await page.click("#btn-scan");
+    await page.waitForFunction(() => document.getElementById("scan-cam").videoWidth > 0, null, { timeout: 10000 });
+    await page.fill("#scan-name", "Teapot");
+    await page.check("#scan-mode-photo");
+    await page.evaluate(() => document.activeElement.blur());
+    // What the hand tracker would report for a thumbs-up held 0.7 s (its own clock: the page is slow here).
+    await page.evaluate(async () => {
+      const { fakeThumbsUp } = await import("./js/hand.js");
+      const start = performance.now();
+      for (let t = 0; t <= 7; t++) window.mtb.scanner.seeHand(fakeThumbsUp(), start + 100 * t);
+    });
+    await page.waitForFunction(() => window.mtb.objects.some((o) => o.name === "teapot"), null, { timeout: 60000 })
+      .catch(async () => {
+        const why = await page.evaluate(() => [window.mtb.scanner.state, document.getElementById("scan-status").textContent,
+          window.mtb.objects.map((o) => o.name).join(",")].join(" | "));
+        throw new Error(`no teapot: ${why}`);
+      });
   });
   await sayAndWait(page, "clear the table");
 }
