@@ -1,7 +1,8 @@
-# Your own objects, from one photo
+# Your own objects, from photos
 
-Put your own mug, or any small object, on the robot's table: one photo becomes its 3D model,
-from a file or live from the webcam.
+Put your own mug, or any small object, on the robot's table: a photo becomes its 3D model, from
+a file or live from the webcam. Four photos of its sides, or a short video of one turn, show
+Idol the back too, instead of letting it invent it.
 The photo is turned into 3D by **Idol**, an open image-to-3D model by Speridlabs
 ([research page](https://speridlabs.com/research/idol) ·
 [code](https://github.com/speridlabs/idol-sdk) ·
@@ -60,6 +61,13 @@ python -m idol.sample --image my-mug.jpg --mode real
 python3 scripts/photo_to_3d.py --ply my-mug.ply --name mug
 ```
 
+Splats of several photos, each a quarter turn further round, are fused into one (see
+[Several photos, one object](#several-photos-one-object)):
+
+```bash
+python3 scripts/photo_to_3d.py --ply front.ply left.ply back.ply right.ply --name mug
+```
+
 ## Scan with the webcam (optional)
 
 The same idea, live: show an object to the webcam and it joins the table. It is off by default;
@@ -74,9 +82,29 @@ A **📷 Scan** button appears next to Stop.
 1. Click it and hold the object inside the square, ideally in front of a plain background.
 2. Type what it is ("stapler") and how tall it is: a photo cannot tell how big something is.
    Width and depth follow from the model's proportions.
-3. Click **Scan**. The photo goes to the scanner (`docker/scan_server.py`), Idol makes the 3D
-   object, and the page says "create a stapler". Afterwards "create a stapler" works any time,
-   without scanning again.
+3. Choose what the camera takes:
+
+   | | What you do | Idol on an RX 9070 XT |
+   |---|---|---|
+   | **1 photo** | hold it still | about 50 s; the back is invented |
+   | **4 sides** (default) | after each photo, turn it a quarter turn, always the same way; the next photo comes after a 4 s countdown | about 3½ min |
+   | **Video** | turn it slowly once all the way round, in about 8 s; the sharpest frame of each quarter is used | about 3½ min |
+
+4. Start. A countdown leaves time to hold the object up, the photos appear as thumbnails, and
+   the panel shows what the GPU is doing ("Idol: photo 2 of 4… 61 s"). Then the page says
+   "create a stapler"; afterwards "create a stapler" works any time, without scanning again.
+
+**Starting without the mouse.** Any of these starts a scan, and while the photos are being taken
+Space or "next" takes the next one straight away:
+
+- the **Space** key (when the panel is open and you are not typing);
+- a **thumbs-up 👍** to the camera, held for half a second (the hand tracking of
+  [hand control](../README.md), in the browser);
+- **saying or typing "scan …"**: "scan my mug", "scan a stapler, 8 cm" opens the panel with the
+  name (and the height) filled in and starts at once; "cancel" closes it.
+
+With `?rec` (recording mode), the scan shows in the diagram too: the photos in the "You" box,
+then Idol's progress, photo by photo, in the GPU PC's box.
 
 The robot plans and grasps a scanned object as a box of that size, so objects up to about 9 cm
 across fit its gripper. A scan with the name of a built-in object ("apple") replaces the built-in
@@ -86,7 +114,7 @@ model; `models/local` still wins over both.
 
 | `IDOL_BACKEND` | Where Idol runs | Needs |
 |---|---|---|
-| `demo` (default) | Idol's public demo on Hugging Face | the internet; a short free daily quota, more with `HF_TOKEN` in `.env` |
+| `demo` (default) | Idol's public demo on Hugging Face | the internet; a short free daily quota, more with `HF_TOKEN` in `.env`. One photo per scan, to spare the quota |
 | `remote` | a scan server on a GPU PC in your network, at `IDOL_URL` | that PC: the Idol SDK and about 8 GB of video memory |
 | `local` | inside the scanner container | a GPU the container can use and the Idol SDK installed (not in the default image) |
 | `file` | nowhere: always the splat at `IDOL_FILE` | nothing; for tests and offline demos |
@@ -136,6 +164,43 @@ and after the scan it frees the video memory, so games get it back. Like Ollama,
 no password: use it only in a network you trust. Idol's authors run it on NVIDIA GPUs and Apple
 Silicon; on AMD GPUs its NVIDIA-only speed-ups are switched off (`IDOL_OPTIMIZE=auto`).
 
+### Switching all AI off on the GPU PC
+
+When the PC is for games, [`docker/ai-switch/ai-switch.sh`](../docker/ai-switch/ai-switch.sh)
+switches both servers, Ollama and the scan server, off and on together:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ai-switch/ai-switch.sh
+bash ai-switch.sh install     # installs `ai-switch` and an "AI services on/off" launcher
+ai-switch off                 # both stopped, neither starts at boot: nothing uses ROCm any more
+ai-switch on                  # both back, with the start-at-boot settings they had before
+ai-switch                     # the other one;  ai-switch status: what runs, who uses the GPU
+```
+
+`off` also lists any other program still holding the GPU's compute device. The launcher opens a
+terminal (for the password) and toggles; in Steam's Gaming Mode add it with "Add a Non-Steam
+Game". While the AI is off, the robot's computer shows no Scan button and the robot answers
+with its built-in rules only.
+
+### Several photos, one object
+
+Idol makes a whole object from each photo; what differs is which side it really saw. The scan
+server (or `photo_to_3d.py` with several `--ply`) puts them together:
+
+1. Each splat is scaled to the same height and stood on the same footprint.
+2. **How far was it turned?** Each photo against the one before: every turn within 30° of a
+   quarter turn is tried, and the one where the shapes match best wins, the colours counting only
+   where both photos really saw the surface (Idol invents the rest). Both directions are tried;
+   the better one says which way round the object went.
+3. **Loop closure.** Four quarter turns make one full turn, so the turns found must add up to
+   360°; the difference is shared out between them.
+4. Each point is kept from the photo that saw its side most directly.
+
+Tried on four renders of a model whose true angles are known: one photo invents a second front
+on the back; four photos show the real back, and the angles come out within about 15° of the
+truth (`tests/unit/test_scan_server.py` and `test_photo_to_3d.py` check the same with synthetic
+views).
+
 ### Testing the scanner
 
 Without Idol: a synthetic splat stands in for it, so the camera, the upload, the conversion and
@@ -157,7 +222,8 @@ cd tests/e2e && CHECK_SCAN=1 node browser_test.mjs
 
 ## Good to know
 
-- **The back is invented.** A print on the front may come back on the back as well.
+- **With one photo, the back is invented.** A print on the front may come back on the back as
+  well. Four sides or a video avoid it.
 - **Free demo quota.** The demo runs on Hugging Face's shared GPUs, which give a short daily
   quota to visitors who are not logged in; a run asks for 3 minutes of it. Logged in to Hugging
   Face in your browser you get more, or run Idol on your own GPU.
