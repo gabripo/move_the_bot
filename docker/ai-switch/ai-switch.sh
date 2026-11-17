@@ -52,7 +52,7 @@ set_boot() {   # $1 service, $2 on|off: through the service's own script when it
 }
 
 gpu_users() {  # programs that hold the GPU's compute device open (ROCm), read from /proc
-  sudo sh -c 'for fd in /proc/[0-9]*/fd/*; do [ "$(readlink "$fd" 2>/dev/null)" = /dev/kfd ] && echo "$fd"; done' \
+  sudo sh -c 'for fd in /proc/[0-9]*/fd/*; do [ "$(readlink "$fd" 2>/dev/null)" = /dev/kfd ] && echo "$fd"; done; true' \
     | cut -d/ -f3 | sort -u | while read -r pid; do echo "$(cat "/proc/$pid/comm" 2>/dev/null) (pid $pid)"; done
 }
 
