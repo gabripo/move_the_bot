@@ -172,8 +172,15 @@ switches both servers, Ollama and the scan server, off and on together:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ai-switch/ai-switch.sh
-bash ai-switch.sh install     # installs `ai-switch`, the Gaming Mode default and a launcher
+curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ai-switch/ai-switch-tray.py
+bash ai-switch.sh install     # `ai-switch`, the Gaming Mode default, a launcher and the tray icon
 ```
+
+In **Desktop Mode** an **AI** icon sits in the system tray, next to the clock: green while
+anything AI runs, grey when all is off. Click it to switch everything on or off; right-click it
+to switch the language model or the scan server on its own and to see what runs. It asks first
+if switching off would stop a scan in progress. It starts with Desktop Mode by itself
+(`ai-switch tray` starts it by hand) and needs no password.
 
 | Command | What it does |
 |---|---|
@@ -183,6 +190,7 @@ bash ai-switch.sh install     # installs `ai-switch`, the Gaming Mode default an
 | `ai-switch gaming-mode off` (the default) | entering Steam's **Gaming Mode** stops both; **Desktop Mode** starts again those set to start at boot |
 | `ai-switch gaming-mode keep` | switching modes changes nothing |
 | `ai-switch status` | what runs, what starts at boot, the Gaming Mode setting, who uses the GPU |
+| `ai-switch tray` | the tray icon of Desktop Mode (it starts by itself with Desktop Mode) |
 
 So a PC that starts in Gaming Mode has the whole GPU for games, and the AI comes back in Desktop
 Mode. To use it from Gaming Mode anyway, add the launcher **AI services on/off** (it runs

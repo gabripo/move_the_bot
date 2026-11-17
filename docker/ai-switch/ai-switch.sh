@@ -4,13 +4,16 @@
 # GPU's compute (ROCm) any more, so games get the whole GPU.
 # Written for Bazzite (Fedora Atomic), like the two server scripts.
 #
-#   ./ai-switch.sh install     install as `ai-switch`, with the Gaming Mode default and a launcher
+#   ./ai-switch.sh install     install as `ai-switch`, with the Gaming Mode default, a launcher and
+#                              the tray icon of Desktop Mode (ai-switch-tray.py, next to this script)
 #
 # Then:
 #   ai-switch now              switch them on or off right now (no password; boot settings stay)
 #   ai-switch off              stop everything AI and keep it off after a reboot
 #   ai-switch on               start it again, with the boot settings it had before
 #   ai-switch status           what runs, what starts at boot, who uses the GPU's compute
+#   ai-switch tray             the "AI" tray icon: click for all on/off, right-click for each
+#                              service; starts by itself with Desktop Mode
 #   ai-switch gaming-mode off|keep
 #                              off (the default): entering Steam's Gaming Mode stops the AI
 #                              services, and Desktop Mode starts again those set to start at boot;
@@ -28,6 +31,9 @@ BIN=/usr/local/bin/ai-switch
 POLKIT=/etc/polkit-1/rules.d/50-ai-switch.rules
 SESSION_UNIT="$HOME/.config/systemd/user/ai-switch-session.service"
 LAUNCHER="$HOME/.local/share/applications/ai-switch.desktop"
+TRAY=/usr/local/lib/ai-switch/ai-switch-tray.py
+TRAY_LAUNCHER="$HOME/.local/share/applications/ai-switch-tray.desktop"
+TRAY_AUTOSTART="$HOME/.config/autostart/ai-switch-tray.desktop"
 BOOT_LINE="WantedBy=multi-user.target"
 
 installed() { [ -f "$UNITS/$1.container" ]; }
@@ -185,8 +191,26 @@ Terminal=true
 Icon=preferences-system
 Categories=System;
 DESKTOP
-  echo "Installed: ai-switch, the launcher \"AI services on/off\" in the application menu, and"
-  echo "the Gaming Mode default (ai-switch gaming-mode: $(gaming_default))."
+  # The tray icon of Desktop Mode, like the LG TV one: in the menu, and started with KDE.
+  local tray_src; tray_src="$(dirname "$(readlink -f "$0")")/ai-switch-tray.py"
+  if [ -f "$tray_src" ]; then
+    sudo install -D -m 755 "$tray_src" "$TRAY"
+    mkdir -p "$(dirname "$TRAY_AUTOSTART")"
+    cat > "$TRAY_LAUNCHER" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=AI switch (tray)
+Comment=Tray icon: switch the language model and the image-to-3D server on or off (move_the_bot)
+Exec=$BIN tray
+Icon=preferences-system
+Terminal=false
+Categories=Utility;System;
+DESKTOP
+    { cat "$TRAY_LAUNCHER"; echo "OnlyShowIn=KDE;"; echo "X-KDE-autostart-phase=2"; } > "$TRAY_AUTOSTART"
+  fi
+  echo "Installed: ai-switch, the launcher \"AI services on/off\" in the application menu,"
+  [ -f "$TRAY" ] && echo "the \"AI\" tray icon of Desktop Mode (starts with it; now: ai-switch tray),"
+  echo "and the Gaming Mode default (ai-switch gaming-mode: $(gaming_default))."
   cmd_status
 }
 
@@ -197,6 +221,7 @@ case "${1:-now}" in
   session) cmd_session ;;
   gaming-mode) cmd_gaming_mode "${2:-}" ;;
   status) cmd_status ;;
+  tray) exec python3 "$TRAY" ;;
   install) cmd_install ;;
-  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
