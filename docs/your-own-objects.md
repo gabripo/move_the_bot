@@ -108,7 +108,8 @@ then Idol's progress, photo by photo, in the GPU PC's box.
 
 The robot plans and grasps a scanned object as a box of that size, so objects up to about 9 cm
 across fit its gripper. A scan with the name of a built-in object ("apple") replaces the built-in
-model; `models/local` still wins over both.
+model. Between a scan and your own `models/local/<name>.glb`, the newer one wins: scan "mug"
+again and the scan replaces your mug model; copy a model in afterwards and it replaces the scan.
 
 ### Where Idol runs
 

@@ -26,13 +26,24 @@ def test_a_scanned_object_keeps_its_model_and_size(tmp_path):
     assert find_model("stapler", str(tmp_path), allow_download=False) == path
 
 
-def test_your_scan_beats_the_built_in_model_but_not_your_own(tmp_path):
+def test_your_scan_beats_the_built_in_model(tmp_path):
     (tmp_path / "builtin").mkdir()
     (tmp_path / "builtin" / "mug.glb").write_bytes(b"glTF")
     scanned = save_scanned("mug", b"glTF", (0.08, 0.08, 0.1), str(tmp_path))
     assert find_model("mug", str(tmp_path), allow_download=False) == scanned
+
+
+def test_the_newer_of_your_model_and_your_scan_wins(tmp_path):
+    import os
     (tmp_path / "local").mkdir()
-    (tmp_path / "local" / "mug.glb").write_bytes(b"glTF")
+    own = tmp_path / "local" / "mug.glb"
+    own.write_bytes(b"glTF")
+    os.utime(own, (1_000_000, 1_000_000))
+    scanned = save_scanned("mug", b"glTF", (0.08, 0.08, 0.1), str(tmp_path))
+    assert find_model("mug", str(tmp_path), allow_download=False) == scanned   # scanned after
+    own.touch()
+    glb = tmp_path / scanned.removeprefix("/models/")
+    os.utime(glb, (2_000_000, 2_000_000))
     assert find_model("mug", str(tmp_path), allow_download=False) == "/models/local/mug.glb"
 
 

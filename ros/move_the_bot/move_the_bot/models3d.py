@@ -1,7 +1,8 @@
 """Find a 3D model (GLB file) to draw an object with.
 
-Order: your own models (models/local, never committed), objects scanned with the webcam (the
-optional scanner, see docker/scan_server.py), the models shipped with the repo, then the download
+Order: your own models (models/local, never committed) and objects scanned with the webcam (the
+optional scanner, see docker/scan_server.py), the newer of the two first, so a new scan replaces
+your own model and copying a model in replaces an old scan; then the models shipped with the repo, then the download
 cache, then Sketchfab (only when a SKETCHFAB_API_KEY is set). When nothing is found the browser draws the basic shape instead, so
 a missing model never blocks the robot.
 """
@@ -129,9 +130,10 @@ def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
     root = Path(models_dir)
     cached = cache_file(kind, models_dir)
     scanned = cached.is_file() and scanned_size(kind, models_dir) is not None
-    if (root / "local" / f"{slug}.glb").is_file():
+    own = root / "local" / f"{slug}.glb"
+    if own.is_file() and not (scanned and cached.stat().st_mtime > own.stat().st_mtime):
         return f"/models/local/{slug}.glb"
-    if scanned:                               # your own scan beats the repo's model
+    if scanned:                               # your own scan beats the repo's model; a newer one, yours too
         return f"/models/cache/{cached.name}"
     if (root / "builtin" / f"{slug}.glb").is_file():
         return f"/models/builtin/{slug}.glb"
@@ -144,7 +146,7 @@ def find_model(kind: str, models_dir: str, allow_download: bool = True) -> str:
         except OSError:
             return ""
         if _from_sketchfab(kind, api_key, cached):
-            return f"/models/cache/{cache_name}"
+            return f"/models/cache/{cached.name}"
     return ""
 
 
