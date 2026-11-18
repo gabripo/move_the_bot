@@ -55,6 +55,7 @@
           </fieldset>
           <div class="scan-buttons"><button id="scan-go" type="submit">📷 Start</button><button id="scan-cancel" type="button">Cancel</button></div>
           <p id="scan-status" role="status"></p>
+          <div id="scan-list-box" hidden><h3>Your scans <small>✕ forgets one</small></h3><ul id="scan-list"></ul></div>
           <p class="scan-note">Also starts with Space, a 👍 to the camera, or saying “scan my mug”. The photos become 3D with <a href="https://speridlabs.com/research/idol" target="_blank" rel="noopener">Idol</a>.</p>
         </form>
       </div>
@@ -159,6 +160,10 @@
       <button type="button" data-key="escape"><kbd>Esc</kbd><span>Stop the arm</span></button>
       <div class="key-note"><kbd>Space</kbd> or 👍 scan photo · <kbd>/</kbd> type a command</div>
     </div>
+    <h3>Scene <small>what S creates · ✕ removes · <button type="button" id="rec-scene-reset">reset</button></small></h3>
+    <ul id="rec-scene"></ul>
+    <form id="rec-scene-add" autocomplete="off"><input id="rec-scene-new" type="text" maxlength="80" placeholder="add: a teapot on the left" /></form>
+    <div id="rec-scans-box" hidden><h3>Scans <small>✕ forgets one</small></h3><ul id="rec-scans"></ul></div>
     <h3>Script <small>click a line when done · R clears</small></h3>
     <ol id="rec-script"></ol>
     <p class="cue-note">This column is not in the video.</p>

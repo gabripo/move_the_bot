@@ -106,6 +106,12 @@ Space or "next" takes the next one straight away:
 With `?rec` (recording mode), the scan shows in the diagram too: the photos in the "You" box,
 then Idol's progress, photo by photo, in the GPU PC's box.
 
+A scan that went wrong (your face behind the object, say) is forgotten with the ✕ next to it under
+"Your scans" in the scan panel, or by saying or typing "delete the mug scan": the object leaves
+the table, and "create a mug" draws it as before the scan. The scan server's `GET /scans` lists
+the scans and `DELETE /scans/<name>` forgets one. Hold the object at arm's length, in front of a
+plain wall, so the camera sees nothing else behind it.
+
 The robot plans and grasps a scanned object as a box of that size, so objects up to about 9 cm
 across fit its gripper. A scan with the name of a built-in object ("apple") replaces the built-in
 model. Between a scan and your own `models/local/<name>.glb`, the newer one wins: scan "mug"

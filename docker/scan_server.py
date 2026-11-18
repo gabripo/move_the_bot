@@ -25,6 +25,8 @@ Endpoints (image: one or more photos; gaussians, optional: the detail per photo,
   GET  /progress                                   the scan running now: step, photo k of n, seconds
   POST /scan   image, name, height_cm, gaussians   the model in the cache -> {name, model, size, ...}
   POST /splat  image, gaussians                    only the (fused) splat, .ply: what a remote server answers
+  GET  /scans                                      the objects scanned so far -> [{name, model, size, made}]
+  DELETE /scans/{name}                             forget one: 'create a <name>' draws it as before the scan
 """
 from __future__ import annotations
 
@@ -313,6 +315,25 @@ def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: 
                 "backend": BACKEND, "where": WHERE[BACKEND]}
 
     return _run(kind, image, work)
+
+
+@app.get("/scans")
+def scans() -> list:
+    found = []
+    for kind in models3d.scanned_kinds(MODELS_DIR):
+        glb = models3d.cache_file(kind, MODELS_DIR)
+        found.append({"name": kind, "model": f"/models/cache/{glb.name}",
+                      "size": models3d.scanned_size(kind, MODELS_DIR), "made": round(glb.stat().st_mtime)})
+    return sorted(found, key=lambda s: -s["made"])
+
+
+@app.delete("/scans/{name}")
+def forget(name: str) -> dict:
+    kind = object_name(name)
+    if not models3d.forget_scanned(kind, MODELS_DIR):
+        raise HTTPException(404, f"There is no scan of '{kind}'.")
+    log.info("Forgot the scan of %s", kind)
+    return {"removed": kind}
 
 
 @app.post("/splat")

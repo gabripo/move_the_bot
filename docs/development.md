@@ -72,7 +72,16 @@ is no webcam in CI. The rest of the path, from hand position to joint motion, is
 
 ## Recording a demo by hand
 
-Open the page in recording mode, in its own Chrome window:
+One command gets everything ready and opens recording mode in its own Chrome window:
+
+```bash
+./record-demo.sh          # move_the_bot with the scanner, the GPU PC's AI on, the model loaded, Chrome
+./record-demo.sh check    # only says what is ready
+./record-demo.sh off      # afterwards: the GPU PC's AI off again
+```
+
+It switches the GPU PC's AI on over SSH when `GPU_PC_SSH` (and `GPU_PC_SSH_KEY`) is in `.env`,
+see `.env.example`; otherwise click the AI icon in the PC's tray first. By hand, the window is:
 
 ```bash
 open -na "Google Chrome" --args --app="http://localhost:8080/?rec" --window-size=1920,1080
@@ -84,6 +93,10 @@ which tab to share, choose this one. **P** pauses and resumes, **V** again stops
 of the demo area only to Downloads. The other keys: **S** sets the scene, **R** shows the opening
 title (and unticks the script), **M** speaks, **H** hand control, **E** the end card, **Esc** stops
 the arm, **/** types a command. `&script=line one;line two` replaces the script.
+
+The column also sets up the demo: **Scene** lists what S creates (type "a teapot on the left" to
+add an object, ✕ to remove one; this browser remembers it, "reset" goes back), and **Scans** lists
+the scanned objects, with ✕ to forget one that went wrong.
 
 ## Troubleshooting
 

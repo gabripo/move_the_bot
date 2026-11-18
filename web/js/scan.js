@@ -11,6 +11,10 @@
 // Starting: the Start button, the Space key, a thumbs-up to the camera, or saying (or typing)
 // "scan my mug" / "scan a stapler, 8 cm". A countdown leaves time to show the object. Between
 // photos the next one comes by itself after a few seconds; Space or "next" takes it at once.
+//
+// A scan that went wrong is forgotten with the ✕ next to it in "Your scans", or by saying (or
+// typing) "delete the mug scan" / "forget the scanned mug": the object is taken off the table, and
+// "create a mug" then draws it as before the scan. Lists of scans follow the "mtb-scans" event.
 
 import { openCamera } from "./camera.js";
 import { isThumbsUp, loadHandLandmarker } from "./hand.js";
@@ -65,6 +69,7 @@ export class Scanner {
     const first = !this.health;
     this.health = health;
     $("btn-scan").title = `Turn an object you show to the webcam into a 3D object (Idol, ${health.where})`;
+    if (first) this._changed();
     // Idol's public demo takes one photo (its free quota is small): no several-photo modes.
     const many = health.backend !== "demo";
     for (const id of ["scan-mode-sides", "scan-mode-video"]) $(id).disabled = !many;
@@ -114,9 +119,60 @@ export class Scanner {
     else if (this.state === "capturing") this.skip?.();
   }
 
+  // ------------------------------------------------------------ scans made so far
+
+  async scans() {
+    try {
+      const r = await fetch("./scan/scans", { cache: "no-store" });
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  }
+
+  // Forget a scan; the object leaves the table, so the next "create" draws it the old way.
+  async forget(name) {
+    let answer;
+    try {
+      const r = await fetch(`./scan/scans/${encodeURIComponent(name)}`, { method: "DELETE" });
+      answer = await r.json();
+      if (!r.ok) throw new Error(answer.detail || r.statusText);
+    } catch (e) {
+      this.onEvent("forget-failed", { name, message: `Could not forget the scan of ${name}: ${e.message || e}` });
+      return false;
+    }
+    if ((window.mtb?.objects || []).some((o) => o.name === answer.removed)) this.send(`remove the ${answer.removed}`);
+    this.onEvent("forgot", { name: answer.removed });
+    this._changed();
+    return true;
+  }
+
+  _changed() {
+    window.dispatchEvent(new Event("mtb-scans"));
+    this._list();
+  }
+
+  async _list() {
+    const list = $("scan-list");
+    const scans = await this.scans();
+    list.replaceChildren(...scans.map((s) => {
+      const li = document.createElement("li");
+      const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: `Forget the scan of ${s.name}` });
+      x.addEventListener("click", () => this.forget(s.name));
+      li.append(s.name, x);
+      return li;
+    }));
+    $("scan-list-box").hidden = !scans.length;
+  }
+
   // Words from the command box or the microphone. True when they were for the scanner.
   command(text) {
     const t = text.trim().toLowerCase().replace(/[.!?]+$/, "");
+    // "delete the mug scan", "forget the scanned mug", "remove the scan of my mug": only with
+    // the word scan, since "remove the mug" takes the mug off the table.
+    const f = t.match(/^(?:please\s+)?(?:delete|forget|remove|discard|throw away)\s+(?:the\s+|my\s+)?(?:scan(?:ned)?\s+(?:of\s+)?)?(?:the\s+|my\s+|a\s+)?(.+?)(\s+scan)?$/);
+    if (f && !$("btn-scan").hidden && (f[2] || /\bscan/.test(t.slice(0, t.length - f[1].length)))) {
+      this.forget(f[1].trim());
+      return true;
+    }
     if (this.state === "capturing" && /^(next|photo|cheese|snap|take it|now|go)\b/.test(t)) { this.trigger(); return true; }
     if (this.state !== "closed" && /^(cancel|close)( the)?( scan(ner)?)?$/.test(t)) { this.close(); return true; }
     const m = t.match(/^(?:please\s+)?(?:scan|digiti[sz]e|virtuali[sz]e)(?:\s+(.*))?$/);
@@ -300,6 +356,7 @@ export class Scanner {
       if (!r.ok) throw new Error(answer.detail || `the scanner answered ${r.status}`);
       clearInterval(poll);
       this.onEvent("done", { ...answer, onGpu: this.onGpu });
+      this._changed();
       this.state = "ready";
       this.close();
       this.send(`create a ${answer.name}`);

@@ -91,3 +91,12 @@ def test_too_many_photos_are_refused(scanner):
     r = client.post("/scan", data={"name": "radio", "height_cm": "12"}, files=photos(9))
     assert r.status_code == 400 and not seen
     assert client.get("/progress").json()["state"] == "failed"
+
+
+def test_scans_are_listed_and_can_be_forgotten(scanner):
+    client, _, _ = scanner
+    assert client.post("/scan", data={"name": "radio", "height_cm": "12"}, files=photos(1)).status_code == 200
+    assert [s["name"] for s in client.get("/scans").json()] == ["radio"]
+    assert client.delete("/scans/the radio").json() == {"removed": "radio"}
+    assert client.get("/scans").json() == []
+    assert client.delete("/scans/radio").status_code == 404

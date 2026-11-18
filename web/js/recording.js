@@ -16,6 +16,10 @@
 // URL options: hook=…&hook2=… (opening title), setup=… (objects for S, ";" between commands),
 // desk=0 (plain table instead of a desk), llmpc=… (where the language model runs),
 // script=… (the script in the cue column, ";" between lines).
+//
+// The cue column also edits the scene that S creates (add an object, ✕ to remove one; kept in
+// this browser, "reset" goes back to the default or setup=…) and lists the scanned objects, with a
+// ✕ to forget a scan that went wrong.
 
 import { openCamera } from "./camera.js";
 import { Tape } from "./tape.js";
@@ -47,9 +51,10 @@ export class Recording {
     this.settle = null;
     this.hookTimer = null;
     this.llmPc = params.get("llmpc") || "my gaming PC";
-    this.setup = (params.get("setup")
-      || "clear the table;create a mug on the right;create a red cube in front;create an apple on the left")
-      .split(";").map((s) => s.trim()).filter(Boolean);
+    this.defaultScene = (params.get("setup")
+      || "create a mug on the right;create a red cube in front;create an apple on the left")
+      .split(";").map((s) => s.trim()).filter((s) => s && s !== "clear the table");
+    this.scene = this._loadScene() || [...this.defaultScene];
 
     document.body.classList.add("rec");
     $("rec").hidden = false;
@@ -94,6 +99,8 @@ export class Recording {
       button.addEventListener("mousedown", (e) => e.preventDefault());   // keep the focus where it was (Space scans)
       button.addEventListener("click", () => this._do(button.dataset.key));
     }
+    this._sceneUi();
+    this._scansUi();
     const lines = params.get("script") ? params.get("script").split(";").map((l) => l.trim()).filter(Boolean) : SCRIPT;
     for (const line of lines) {
       const li = document.createElement("li");
@@ -153,6 +160,8 @@ export class Recording {
   // The object scanner (scan.js): the webcam takes the photos, then Idol turns them into 3D.
   // When Idol runs on the GPU PC, that PC's box shows its progress, photo by photo.
   scan(state, info) {
+    if (state === "forgot") return;                 // between takes: nothing to caption
+    if (state === "forget-failed") { this._sub(info.message, "error"); return; }
     const photos = (n) => (n > 1 ? `${n} photos` : "one photo");
     const IDOL = "Idol · photos → 3D";
     if (state === "capture") {
@@ -189,6 +198,64 @@ export class Recording {
     $("rec-end").hidden = true;
     clearTimeout(this.hookTimer);
     $("rec-hook").classList.remove("hide");
+  }
+
+  // ------------------------------------------------------------------ scene and scans
+
+  _loadScene() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mtb.rec.scene"));
+      return Array.isArray(saved) ? saved.filter((s) => typeof s === "string") : null;
+    } catch { return null; }
+  }
+
+  _sceneUi() {
+    const save = () => { try { localStorage.setItem("mtb.rec.scene", JSON.stringify(this.scene)); } catch { /* private mode */ } };
+    const draw = () => {
+      $("rec-scene").replaceChildren(...this.scene.map((command, i) => {
+        const li = document.createElement("li");
+        const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: `Remove “${command}”` });
+        x.addEventListener("mousedown", (e) => e.preventDefault());
+        x.addEventListener("click", () => { this.scene.splice(i, 1); save(); draw(); });
+        li.append(command.replace(/^create\s+(an?\s+|the\s+|some\s+)?/i, ""), x);
+        li.title = `S says: “${command}”`;
+        return li;
+      }));
+    };
+    $("rec-scene-add").addEventListener("submit", (e) => {
+      e.preventDefault();
+      let text = $("rec-scene-new").value.trim().replace(/[.!]+$/, "");
+      if (!text) return;
+      if (!/^(create|add|put|place|make)\b/i.test(text)) text = `create ${/^(an?|the|some)\s/i.test(text) ? "" : "a "}${text}`;
+      this.scene.push(text.replace(/^(add|put|place|make)\b/i, "create"));
+      $("rec-scene-new").value = "";
+      $("rec-scene-new").blur();
+      save();
+      draw();
+    });
+    $("rec-scene-reset").addEventListener("click", () => {
+      this.scene = [...this.defaultScene];
+      try { localStorage.removeItem("mtb.rec.scene"); } catch { /* private mode */ }
+      draw();
+    });
+    draw();
+  }
+
+  async _scansUi() {
+    const draw = async () => {
+      const scans = await this.actions.scans();
+      $("rec-scans").replaceChildren(...scans.map((s) => {
+        const li = document.createElement("li");
+        const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: `Forget the scan of ${s.name}` });
+        x.addEventListener("mousedown", (e) => e.preventDefault());
+        x.addEventListener("click", () => this.actions.forget(s.name));
+        li.append(s.name, x);
+        return li;
+      }));
+      $("rec-scans-box").hidden = !scans.length;
+    };
+    window.addEventListener("mtb-scans", draw);
+    draw();
   }
 
   // ------------------------------------------------------------------ events
@@ -261,7 +328,7 @@ export class Recording {
     else if (key === "v") this.tape.toggle();
     else if (key === "p") this.tape.pause();
     else if (key === "s") {
-      this.setup.forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
+      ["clear the table", ...this.scene].forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
       this.ready();
     } else if (key === "r") {
       this.ready();
