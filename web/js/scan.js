@@ -448,8 +448,8 @@ export class Scanner {
       { src: c.toDataURL("image/jpeg", 0.7), alt: `photo ${k + 1}` })));
     const steps = [];
     if (remote) steps.push(["sending", `Sending ${n > 1 ? `the ${n} photos` : "the photo"} to ${this.pcName}`]);
-    if (this.onGpu) steps.push(["loading", "Loading Idol into the GPU's memory"]);
-    steps.push(["idol", n > 1 ? `Each photo → 3D Gaussians` : "The photo → 3D Gaussians"]);
+    if (this.onGpu) steps.push(["loading", "Loading Idol and SAM 2 into the GPU's memory"]);
+    steps.push(["idol", n > 1 ? "Each photo: cut out, → 3D Gaussians" : "The photo: cut out, → 3D Gaussians"]);
     if (n > 1) steps.push(["fusing", "Finding each photo's turn, merging the sides"]);
     steps.push(["model", "The 3D model, at the object's real size"]);
     $("idol-steps").replaceChildren(...steps.map(([key, text]) => {
@@ -461,6 +461,7 @@ export class Scanner {
     const gaussians = (this.health?.gaussians || 262144).toLocaleString();
     this.notes = [
       `Idol, an open image-to-3D model by Sperid Labs, turns each photo into ${gaussians} 3D Gaussians: small coloured, see-through blobs.`,
+      "First SAM 2, Meta's segment-anything model, cuts the object out of each photo, so nothing behind it becomes 3D.",
       n > 1 ? "From one photo it has to invent the hidden sides; the other photos show what they really look like." : "From one photo it invents the sides the camera did not see.",
       `It runs on ${remote ? this.pcName : "this computer"}'s GPU. The language model steps aside meanwhile, to give it the video memory.`,
       n > 1 ? "Then the results are turned until the surfaces they share match, and merged into one object." : "Then the blobs become points with the object's real height.",
@@ -491,6 +492,11 @@ export class Scanner {
 
   _cardProgress(p) {
     if (!this.card) return;
+    // What Idol was shown: each photo with only the object left, as soon as it is cut out.
+    (p.cutouts || []).forEach((src, k) => {
+      const img = $("idol-photos").children[k];
+      if (src && img && img.src !== src) { img.src = src; img.classList.add("cut"); img.title = "What Idol sees: only the object"; }
+    });
     const now = performance.now();
     if (p.step === "idol") {                         // one row for all photos; each photo timed
       const view = Math.min(p.view || 1, this.card.n);
@@ -534,7 +540,8 @@ export class Scanner {
     $("idol-bar").firstElementChild.style.width = `${Math.max(2, Math.round((100 * done) / total))}%`;
     const view = c.key === "idol" ? c.view : ["fusing", "model"].includes(c.key) ? c.n + 1 : 0;
     [...$("idol-photos").children].forEach((img, k) => {
-      img.className = k + 1 === view ? "now" : k + 1 < view ? "done" : "";
+      img.classList.toggle("now", k + 1 === view);
+      img.classList.toggle("done", k + 1 < view);
     });
   }
 
@@ -544,7 +551,7 @@ export class Scanner {
     if (ok) {
       [...$("idol-steps").children].forEach((li) => { li.className = "done"; });
       $("idol-bar").firstElementChild.style.width = "100%";
-      [...$("idol-photos").children].forEach((img) => { img.className = "done"; });
+      [...$("idol-photos").children].forEach((img) => { img.classList.remove("now"); img.classList.add("done"); });
     }
     $("idol-card").className = ok ? "done" : "failed";
     $("idol-title").textContent = title;

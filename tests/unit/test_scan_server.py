@@ -100,3 +100,14 @@ def test_scans_are_listed_and_can_be_forgotten(scanner):
     assert client.delete("/scans/the radio").json() == {"removed": "radio"}
     assert client.get("/scans").json() == []
     assert client.delete("/scans/radio").status_code == 404
+
+
+def test_only_the_part_in_the_middle_is_kept(scanner):
+    # The cut-out keeps the object held in the middle, not a speck elsewhere in the picture.
+    import scan_server
+    mask = np.zeros((100, 100), bool)
+    mask[30:70, 35:65] = True          # the object
+    mask[5:10, 80:95] = True           # something else
+    kept = scan_server._around_center(mask)
+    assert kept[50, 50] and kept[30:70, 35:65].all() and not kept[5:10, 80:95].any()
+    assert not scan_server._around_center(np.zeros((100, 100), bool)).any()
