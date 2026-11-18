@@ -60,6 +60,19 @@
         </form>
       </div>
 
+      <!-- While Idol builds the model: back to the 3D view, with what it is doing and where. scan.js -->
+      <div id="idol-card" hidden role="status" aria-live="polite">
+        <div class="idol-head">
+          <div class="idol-orb" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="idol-what"><b id="idol-title">Idol is building it in 3D</b><span id="idol-where"></span></div>
+          <span id="idol-time">0:00</span>
+        </div>
+        <div id="idol-photos"></div>
+        <ol id="idol-steps"></ol>
+        <div id="idol-bar"><div></div></div>
+        <p id="idol-note"></p>
+      </div>
+
       <!-- Recording mode (?rec): what is happening, readable with the sound off. See recording.js. -->
       <div id="rec" hidden>
         <div id="rec-hook"><strong id="rec-hook-1"></strong><span id="rec-hook-2"></span></div>
