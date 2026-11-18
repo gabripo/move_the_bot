@@ -31,7 +31,8 @@ const STEPS = {
 };
 
 export class Scanner {
-  constructor({ send, onEvent, quickStart }) {
+  constructor({ send, onEvent, quickStart, pcName = "my gaming PC" }) {
+    this.pcName = pcName;                              // where Idol runs, when it is on a GPU PC
     this.send = send;
     this.onEvent = onEvent || (() => {});
     this.quickStart = quickStart || (() => false);     // Space / 👍 with the panel closed
@@ -47,7 +48,17 @@ export class Scanner {
     $("scan-cancel").addEventListener("click", () => this.close());
     $("scan-form").addEventListener("submit", (e) => { e.preventDefault(); this.trigger(); });
     window.addEventListener("keydown", (e) => {
-      if (e.key !== " " || e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key !== " ") return;
+      // In the name box a tap types a space ("red mug"); holding Space starts the scan instead of
+      // filling the box with spaces (which scrolls the name out of sight). In the height box, Space starts.
+      if (e.target === $("scan-name") || e.target === $("scan-height")) {
+        if (e.target === $("scan-height") || e.repeat) {
+          e.preventDefault();
+          if (this.state === "ready" && $("scan-name").value.trim() && !this.starting) this.trigger();
+        }
+        return;
+      }
+      if (e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
       if (this.state === "closed" && !(this.quickStart() && !$("btn-scan").hidden)) return;
       e.preventDefault();
       if (e.target.tagName === "BUTTON") e.target.blur();
@@ -375,6 +386,7 @@ export class Scanner {
     const where = this.onGpu ? "on the GPU" : `(${this.health?.where || "Idol"})`;
     this._status(n > 1 ? `${n} photos taken. Idol is turning them into 3D ${where}…` : `Photo taken. Idol is turning it into 3D ${where}…`, "busy");
     this.onEvent("start", { name, views: n, backend: this.health?.backend, gpu: this.health?.gpu });
+    this._cardStart(name, canvases);
     const form = new FormData();
     for (const [k, canvas] of canvases.entries()) {
       form.append("image", await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92)), `view_${k}.jpg`);
@@ -388,6 +400,8 @@ export class Scanner {
       if (!r.ok) throw new Error(answer.detail || `the scanner answered ${r.status}`);
       clearInterval(poll);
       this.onEvent("done", { ...answer, onGpu: this.onGpu });
+      this._cardEnd(true, `“${answer.name}” is ready`, `3D from ${n > 1 ? `${n} photos` : "one photo"} in ${Math.round(answer.seconds)} s`
+        + ` · ${(answer.points || 0).toLocaleString()} points`);
       this._changed();
       this.state = "ready";
       this.close();
@@ -397,6 +411,8 @@ export class Scanner {
       this.state = "ready";
       this._status(`The scan failed: ${e.message || e}`, "error");
       this.onEvent("failed", { name, message: String(e.message || e) });
+      this._cardEnd(false, "The scan failed", String(e.message || e));
+      this.close();                                  // Space, 👍 or "scan …" try again
     } finally {
       clearInterval(poll);
       $("scan-go").disabled = false;
@@ -412,6 +428,131 @@ export class Scanner {
       : STEPS[p.step] || "Working";
     this._status(`${step}… ${Math.round(p.seconds || 0)} s`, "busy");
     this.onEvent("progress", { ...p, text: step, onGpu: this.onGpu });
+    this._cardProgress(p);
+  }
+
+  // ------------------------------------------------------------ the card while Idol works
+
+  // The photos are taken: back to the 3D view, with a card saying what Idol does, and where.
+  _cardStart(name, canvases) {
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());   // the camera is done
+    this.stream = null;
+    $("scan-cam").srcObject = null;
+    $("scan-panel").hidden = true;
+    const n = canvases.length, remote = this.health?.backend === "remote";
+    const gpu = this.health?.gpu ? ` · ${this.health.gpu}` : "";
+    $("idol-title").textContent = `Idol is building “${name}” in 3D`;
+    $("idol-where").textContent = remote ? `on ${this.pcName}'s GPU${gpu}`
+      : this.health?.backend === "local" ? `on this computer's GPU${gpu}` : (this.health?.where || "");
+    $("idol-photos").replaceChildren(...canvases.map((c, k) => Object.assign(document.createElement("img"),
+      { src: c.toDataURL("image/jpeg", 0.7), alt: `photo ${k + 1}` })));
+    const steps = [];
+    if (remote) steps.push(["sending", `Sending ${n > 1 ? `the ${n} photos` : "the photo"} to ${this.pcName}`]);
+    if (this.onGpu) steps.push(["loading", "Loading Idol into the GPU's memory"]);
+    steps.push(["idol", n > 1 ? `Each photo → 3D Gaussians` : "The photo → 3D Gaussians"]);
+    if (n > 1) steps.push(["fusing", "Finding each photo's turn, merging the sides"]);
+    steps.push(["model", "The 3D model, at the object's real size"]);
+    $("idol-steps").replaceChildren(...steps.map(([key, text]) => {
+      const li = document.createElement("li");
+      li.dataset.key = key;
+      li.append(text, document.createElement("small"));
+      return li;
+    }));
+    const gaussians = (this.health?.gaussians || 262144).toLocaleString();
+    this.notes = [
+      `Idol, an open image-to-3D model by Sperid Labs, turns each photo into ${gaussians} 3D Gaussians: small coloured, see-through blobs.`,
+      n > 1 ? "From one photo it has to invent the hidden sides; the other photos show what they really look like." : "From one photo it invents the sides the camera did not see.",
+      `It runs on ${remote ? this.pcName : "this computer"}'s GPU. The language model steps aside meanwhile, to give it the video memory.`,
+      n > 1 ? "Then the results are turned until the surfaces they share match, and merged into one object." : "Then the blobs become points with the object's real height.",
+      "The robot will grasp the result as a box of its real size.",
+    ];
+    this.card = { n, started: performance.now(), key: "", keyStarted: performance.now(), times: {}, note: 0, noteAt: 0,
+      view: 0, viewStarted: 0, viewTimes: [] };
+    clearTimeout(this.cardHide);
+    $("idol-card").className = "";
+    $("idol-card").hidden = false;
+    $("idol-bar").firstElementChild.style.width = "2%";
+    this._cardNote();
+    clearInterval(this.cardTimer);
+    this.cardTimer = setInterval(() => {
+      const s = (performance.now() - this.card.started) / 1000;
+      $("idol-time").textContent = `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+      if (Math.floor(s) % 7 === 0 && Math.floor(s) !== this.card.noteAt) { this.card.noteAt = Math.floor(s); this._cardNote(); }
+      this._cardDraw();
+    }, 250);
+    this._cardProgress({ step: remote ? "sending" : this.onGpu ? "loading" : "idol", view: 1, views: n });
+  }
+
+  _cardNote() {
+    const note = $("idol-note");
+    note.style.opacity = 0;
+    setTimeout(() => { note.textContent = this.notes[this.card.note++ % this.notes.length]; note.style.opacity = 1; }, 300);
+  }
+
+  _cardProgress(p) {
+    if (!this.card) return;
+    const now = performance.now();
+    if (p.step === "idol") {                         // one row for all photos; each photo timed
+      const view = Math.min(p.view || 1, this.card.n);
+      if (view !== this.card.view) {
+        if (this.card.view) this.card.viewTimes.push((now - this.card.viewStarted) / 1000);
+        this.card.view = view;
+        this.card.viewStarted = now - 1000 * (p.view_seconds || 0);
+      }
+    }
+    const key = p.step;
+    if (!$("idol-steps").querySelector(`[data-key="${key}"]`) || key === this.card.key) return;
+    if (this.card.key) this.card.times[this.card.key] = (now - this.card.keyStarted) / 1000;
+    this.card.key = key;
+    this.card.keyStarted = now;
+    this._cardDraw();
+  }
+
+  _cardDraw() {
+    const items = [...$("idol-steps").children];
+    const at = items.findIndex((li) => li.dataset.key === this.card.key);
+    const c = this.card, now = performance.now();
+    const t = c.viewTimes, perView = t.length ? t.reduce((a, b) => a + b, 0) / t.length : 45;
+    const typical = { sending: 3, loading: 25, idol: perView * c.n, fusing: 15, model: 4 };
+    let total = 0, done = 0;
+    items.forEach((li, i) => {
+      const key = li.dataset.key, expect = typical[key] || 5;
+      li.className = i < at ? "done" : i === at ? "now" : "";
+      const took = i < at ? c.times[key] : i === at ? (now - c.keyStarted) / 1000 : null;
+      let label = took == null ? "" : `${Math.round(took)} s`;
+      let fraction = took == null ? 0 : Math.min(took / expect, 0.95);
+      if (key === "idol" && i === at && c.n > 1) {
+        const inView = (now - c.viewStarted) / 1000;
+        label = `photo ${c.view} of ${c.n} · ${Math.round(inView)} s`;
+        fraction = (c.view - 1 + Math.min(inView / perView, 0.95)) / c.n;
+      }
+      li.lastElementChild.textContent = label;
+      total += expect;
+      if (i < at) done += expect;
+      else if (i === at) done += fraction * expect;
+    });
+    $("idol-bar").firstElementChild.style.width = `${Math.max(2, Math.round((100 * done) / total))}%`;
+    const view = c.key === "idol" ? c.view : ["fusing", "model"].includes(c.key) ? c.n + 1 : 0;
+    [...$("idol-photos").children].forEach((img, k) => {
+      img.className = k + 1 === view ? "now" : k + 1 < view ? "done" : "";
+    });
+  }
+
+  _cardEnd(ok, title, detail) {
+    clearInterval(this.cardTimer);
+    if (!this.card) return;
+    if (ok) {
+      [...$("idol-steps").children].forEach((li) => { li.className = "done"; });
+      $("idol-bar").firstElementChild.style.width = "100%";
+      [...$("idol-photos").children].forEach((img) => { img.className = "done"; });
+    }
+    $("idol-card").className = ok ? "done" : "failed";
+    $("idol-title").textContent = title;
+    $("idol-note").textContent = detail;
+    $("idol-note").style.opacity = 1;
+    this.card = null;
+    clearTimeout(this.cardHide);
+    this.cardHide = setTimeout(() => { $("idol-card").hidden = true; }, ok ? 2500 : 8000);
   }
 
   // ------------------------------------------------------------ drawing
