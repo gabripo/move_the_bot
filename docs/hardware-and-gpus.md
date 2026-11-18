@@ -43,8 +43,8 @@ downloads the model and checks that it runs on the GPU:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ollama-server/ollama-server.sh
-bash ollama-server.sh install              # starts now and at every boot
-bash ollama-server.sh install --no-boot    # or: starts only when you ask
+bash ollama-server.sh install              # starts now, not at boot (AI is off by default)
+bash ollama-server.sh install --boot       # or: also starts at every boot
 ```
 
 It prints the addresses other computers can use. Afterwards:

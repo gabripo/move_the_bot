@@ -144,6 +144,7 @@ as a system service on port 8001. Written for Bazzite; other Linux systems with 
    ```bash
    curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/idol-server/idol-server.sh
    bash idol-server.sh install        # builds the image (several GB, once) and starts the service
+                                      # now, not at boot (--boot for that)
    idol-server login                  # paste the token
    idol-server test                   # the first run also downloads Idol (about 3 GB)
    ```
@@ -176,6 +177,10 @@ curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker
 bash ai-switch.sh install     # `ai-switch`, the Gaming Mode default, a launcher and the tray icon
 ```
 
+**AI is off by default:** after `install` nothing AI starts with the PC, so games and the desktop
+get the whole GPU until you switch it on (the tray icon, or `ai-switch now`).
+`ai-switch default on` makes both start with the PC again.
+
 In **Desktop Mode** an **AI** icon sits in the system tray, next to the clock: green while
 anything AI runs, grey when all is off. Click it to switch everything on or off; right-click it
 to switch the language model or the scan server on its own and to see what runs. It asks first
@@ -187,6 +192,7 @@ if switching off would stop a scan in progress. It starts with Desktop Mode by i
 | `ai-switch now` (or just `ai-switch`) | on if all is off, off if anything runs: right now, the boot settings stay; no password |
 | `ai-switch off` | both stopped, neither starts at boot: nothing uses ROCm any more; lists any other program still holding the GPU's compute device |
 | `ai-switch on` | both back, with the start-at-boot settings they had before `off` |
+| `ai-switch default off` (the default) / `on` | nothing AI starts with the PC (switch it on when needed) / both start with the PC; nothing starts or stops now |
 | `ai-switch gaming-mode off` (the default) | entering Steam's **Gaming Mode** stops both; **Desktop Mode** starts again those set to start at boot |
 | `ai-switch gaming-mode keep` | switching modes changes nothing |
 | `ai-switch status` | what runs, what starts at boot, the Gaming Mode setting, who uses the GPU |
