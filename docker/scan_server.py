@@ -22,7 +22,8 @@ Where Idol runs (IDOL_BACKEND):
 Endpoints (image: one or more photos; gaussians, optional: the detail per photo, 32,768 to
 1,048,576; default IDOL_GAUSSIANS):
   GET  /health                                     which backend, where it runs, which GPU
-  GET  /progress                                   the scan running now: step, photo k of n, seconds
+  GET  /progress                                   the scan running now: step, photo k of n, seconds,
+                                                   and small pictures of what Idol was shown (cutouts)
   POST /scan   image, name, height_cm, gaussians   the model in the cache -> {name, model, size, ...}
   POST /splat  image, gaussians                    only the (fused) splat, .ply: what a remote server answers
   GET  /scans                                      the objects scanned so far -> [{name, model, size, made}]
@@ -106,13 +107,179 @@ def _local_pipeline():
     return IdolPipeline.from_pretrained(os.environ.get("IDOL_WEIGHTS", "speridlabs/idol"), optimize=optimize)
 
 
+# ------------------------------------------------------------------ the object, cut out
+#
+# Idol removes the background itself (BiRefNet), but BiRefNet keeps whatever stands out, and a
+# face right behind the object stands out too: it became part of the model. So the object is cut
+# out first: SAM 2 is told the object is in the middle of the photo (the scanner's square), and
+# only what BiRefNet and SAM 2 both call the object stays. Idol then gets a photo with a
+# transparent background and uses it as it is. CUTOUT=0 leaves it to Idol alone.
+CUTOUT = os.environ.get("CUTOUT", "1") != "0"
+CUTOUT_MODEL = os.environ.get("CUTOUT_MODEL", "facebook/sam2.1-hiera-small")
+_cutter = None
+_cutter_broken = ""                               # why SAM 2 could not be loaded: then no more tries
+
+
+class Cutter:
+    def __init__(self, device, background_remover=None):
+        from transformers import Sam2Model, Sam2Processor
+        self.processor = Sam2Processor.from_pretrained(CUTOUT_MODEL)
+        self.model = Sam2Model.from_pretrained(CUTOUT_MODEL).to(device).eval()
+        self.device = device
+        self.remover = background_remover           # Idol's BiRefNet, when there is one
+
+    def __call__(self, image):
+        """The object in the middle of `image`, on a transparent background (RGBA, the size of
+        `image`), and how it was found."""
+        import numpy as np
+        import torch
+        from PIL import Image, ImageFilter
+        rgb = image.convert("RGB")
+        w, h = rgb.size
+        def ask(points, box=None):
+            """SAM 2's objects for these prompts: (score, area, mask), the plausible ones."""
+            kwargs = {"input_boxes": [[box]]} if box else {}
+            inputs = self.processor(images=rgb, input_points=[[points]], input_labels=[[[1] * len(points)]],
+                                    return_tensors="pt", **kwargs).to(self.device)
+            with torch.no_grad():
+                out = self.model(**inputs, multimask_output=True)
+            masks = self.processor.post_process_masks(out.pred_masks.cpu(), inputs["original_sizes"])[0][0].numpy() > 0
+            found = []
+            for mask, score in zip(masks, out.iou_scores[0, 0].float().cpu().numpy()):
+                mask = _around_center(mask)
+                area = mask.mean()
+                borders = sum(bool(edge.mean() > 0.25) for edge in (mask[0], mask[-1], mask[:, 0], mask[:, -1]))
+                if 0.005 < area < 0.75 and borders <= 1:  # else the background, or a speck
+                    found.append((float(score), float(area), mask))
+            return found
+
+        def pick(found):
+            """The whole object: the largest answer SAM 2 is still fairly sure of."""
+            sure = [f for f in found if f[0] >= max(0.5, max((f[0] for f in found), default=0) - 0.2)]
+            return max(sure, key=lambda f: f[1]) if sure else None
+
+        # The object is held in the middle of the square: SAM 2 is asked with a point there (and
+        # with two more close to it). Each answer comes in three sizes (a detail, a part, the whole).
+        centre = [w / 2, h / 2]
+        best = pick(ask([centre]) + ask([centre, [w / 2, h * 0.46], [w / 2, h * 0.54]]))
+        self.found = [best and (round(best[0], 2), round(best[1], 3))]
+        # Often that is a detail of the object (a print on a mug). Asked again with a box twice its
+        # size, SAM 2 answers with the main thing in the box: the object. Until it stops growing.
+        for _ in range(3):
+            if best is None:
+                break
+            ys, xs = np.nonzero(best[2])
+            cx, cy, half = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2, max(np.ptp(xs), np.ptp(ys))
+            box = [max(0, cx - half), max(0, cy - half), min(w - 1, cx + half), min(h - 1, cy + half)]
+            bigger = pick([f for f in ask([centre], box) if f[1] > best[1] * 1.15 and f[0] >= 0.6
+                           and (f[2] & best[2]).sum() >= 0.8 * best[2].sum()])
+            if bigger is None:
+                break
+            best = bigger
+            self.found.append((round(best[0], 2), round(best[1], 3)))
+        if best is None:
+            return None, "SAM 2 found no object in the middle"
+        best_score, _, best = best
+        # Thin strands hanging off it (straps, cables, hair) go: an opening, then the middle part only.
+        size = max(3, (min(w, h) // 110) | 1)
+        opened = np.array(Image.fromarray(best.astype(np.uint8) * 255).filter(ImageFilter.MinFilter(size))
+                          .filter(ImageFilter.MaxFilter(size))) > 0
+        if opened.sum() > 0.85 * best.sum():
+            best = _around_center(opened)
+        alpha = best
+        how = f"SAM 2 ({best_score:.2f})"
+        if self.remover is not None:
+            # What BiRefNet calls foreground, within (a little more than) SAM's object: its edges are finer.
+            fine = np.array(self.remover.remove_background(rgb).getchannel(3)) > 127
+            grown = np.array(Image.fromarray(best.astype(np.uint8) * 255).filter(ImageFilter.MaxFilter(15))) > 0
+            both = fine & grown
+            if both.sum() > 0.6 * best.sum():
+                alpha, how = both, how + " ∩ BiRefNet"
+        out_image = rgb.copy()
+        out_image.putalpha(Image.fromarray(alpha.astype(np.uint8) * 255))
+        return out_image, how
+
+
+def _around_center(mask):
+    """Only the part of `mask` connected to the middle of the picture (specks elsewhere dropped)."""
+    import numpy as np
+    h, w = mask.shape
+    if not mask[h // 2, w // 2]:
+        return np.zeros_like(mask)
+    step = max(1, max(h, w) // 256)                  # grow the region on a small copy: fast enough
+    small = mask[::step, ::step]
+    region = np.zeros_like(small)
+    region[small.shape[0] // 2, small.shape[1] // 2] = True
+    while True:
+        grown = region.copy()
+        grown[1:] |= region[:-1]; grown[:-1] |= region[1:]; grown[:, 1:] |= region[:, :-1]; grown[:, :-1] |= region[:, 1:]
+        grown &= small
+        if (grown == region).all():
+            break
+        region = grown
+    keep = np.repeat(np.repeat(region, step, 0), step, 1)[:h, :w]
+    big = np.zeros_like(mask)
+    big[:keep.shape[0], :keep.shape[1]] = keep
+    return mask & big
+
+
+def _load_cutter() -> None:
+    global _cutter, _cutter_broken
+    if CUTOUT and _cutter is None and not _cutter_broken:
+        log.info("Loading %s to cut out the objects…", CUTOUT_MODEL)
+        try:
+            _cutter = Cutter(_pipeline.device, getattr(_pipeline, "background_remover", None))
+        except Exception as e:
+            _cutter_broken = str(e)[:200]
+            raise
+
+
+def _cutout(photo: Path) -> Path:
+    """The photo with only the object left (a PNG next to it), or the photo itself when that fails."""
+    if not CUTOUT or _cutter_broken:
+        return photo
+    try:
+        from PIL import Image
+        _load_cutter()
+        image = Image.open(photo)
+        image.thumbnail((1024, 1024))
+        cut, how = _cutter(image)
+        if cut is None:
+            log.info("%s: %s; Idol removes the background itself", photo.name, how)
+            return photo
+        out = photo.with_name(photo.stem + "_cut.png")
+        cut.save(out)
+        log.info("%s: cut out with %s", photo.name, how)
+        return out
+    except Exception as e:                        # no SAM 2 here, no internet the first time…
+        log.warning("Could not cut out %s (%s); Idol removes the background itself", photo.name, e)
+        return photo
+
+
+def _preview(photo: Path) -> str:
+    """A small JPEG (data URL) of what Idol sees: the object cut out, cropped, on black."""
+    import base64
+    import io
+    from PIL import Image
+    try:
+        image = _pipeline.preprocess(str(photo), mode="real") if hasattr(_pipeline, "preprocess") else Image.open(photo)
+        image = image.convert("RGB")
+        image.thumbnail((160, 160))
+        buf = io.BytesIO()
+        image.save(buf, "JPEG", quality=80)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
 def _release_pipeline() -> None:
-    global _pipeline
+    global _pipeline, _cutter
     if KEEP_LOADED or _pipeline is None:
         return
     import gc
     import torch
     _pipeline = None
+    _cutter = None
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()                  # the video memory goes back to games and Ollama
@@ -196,10 +363,20 @@ def make_splat(photos: list[Path], gaussians: int) -> tuple[bytes, list[float]]:
         if _pipeline is None:
             _progress(step="loading")
             _pipeline = _local_pipeline()
+        if CUTOUT and _cutter is None:
+            _progress(step="loading")
+            try:
+                _load_cutter()
+            except Exception as e:                    # then Idol removes the backgrounds itself
+                log.warning("No cut-outs: %s", e)
+        seen = []                                         # what Idol was shown, for the progress
         for k, photo in enumerate(photos):                # the model stays loaded for all of them
-            _progress(step="idol", view=k + 1, views=len(photos), view_started=time.time())
+            _progress(step="idol", view=k + 1, views=len(photos), view_started=time.time(), cutouts=seen)
+            cut = _cutout(photo)
+            seen = seen + [_preview(cut)]
+            _progress(cutouts=seen)
             out = photo.with_suffix(".ply")
-            _pipeline(str(photo), mode="real", seed=42, num_gaussians=gaussians).gaussian.save_ply(str(out))
+            _pipeline(str(cut), mode="real", seed=42, num_gaussians=gaussians).gaussian.save_ply(str(out))
             splats.append(out.read_bytes())
     finally:
         _release_pipeline()
@@ -283,6 +460,9 @@ def progress() -> dict:
             remote = requests.get(IDOL_URL + "/progress", timeout=2).json()
             if remote.get("state") == "running":
                 p.update({k: remote[k] for k in ("step", "view", "views", "view_started") if k in remote})
+                if remote.get("cutouts"):
+                    _progress(cutouts=remote["cutouts"])  # kept for the rest of the scan
+                    p["cutouts"] = remote["cutouts"]
         except (requests.RequestException, ValueError):
             pass
     if p.get("state") == "running":

@@ -329,6 +329,7 @@ body.rec #hand-status { display: none; }
 #idol-photos { display: flex; gap: 8px; }
 #idol-photos:empty { display: none; }
 #idol-photos img { width: 50px; height: 50px; object-fit: cover; border-radius: 10px; border: 2px solid transparent; opacity: 0.45; transition: all 0.3s; }
+#idol-photos img.cut { background: #000; object-fit: contain; }
 #idol-photos img.done { opacity: 0.9; border-color: color-mix(in srgb, var(--c) 50%, transparent); }
 #idol-photos img.now { opacity: 1; border-color: var(--c); box-shadow: 0 0 16px var(--c); transform: translateY(-3px); }
 #idol-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
