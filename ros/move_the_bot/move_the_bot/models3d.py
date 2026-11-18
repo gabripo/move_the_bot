@@ -99,6 +99,21 @@ def save_scanned(kind: str, glb: bytes, size, models_dir: str) -> str:
     return f"/models/cache/{target.name}"
 
 
+def forget_scanned(kind: str, models_dir: str) -> bool:
+    """Delete the scan of `kind` (its model and size). 'create a <kind>' then uses your own model,
+    the repo's or the basic shape again. False when `kind` was not scanned."""
+    glb = cache_file(kind, models_dir)
+    info = glb.with_suffix(".json")
+    try:
+        if json.loads(info.read_text()).get("source") != "scan":
+            return False
+    except (OSError, ValueError):
+        return False
+    glb.unlink(missing_ok=True)
+    info.unlink(missing_ok=True)
+    return True
+
+
 def scanned_size(kind: str, models_dir: str):
     """The size (metres) of a scanned object, or None if `kind` was not scanned."""
     try:

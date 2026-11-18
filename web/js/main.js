@@ -236,5 +236,6 @@ if (params.has("rec")) {
   rec = new Recording({ ros, viewer, params, actions: {
     send, stop: () => send("stop"),
     toggleHand: () => $("hand-toggle").click(), toggleMic: () => $("mic").click(),
+    scans: () => scanner.scans(), forget: (name) => scanner.forget(name),
   } });
 }

@@ -178,6 +178,8 @@ body.rec #app { height: auto; width: min(calc(100vw - 272px), calc(100vh * 16 / 
 #rec-script { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 5px; }
 #rec-script li { cursor: pointer; line-height: 1.35; color: var(--text); }
 #rec-script li.done { color: var(--muted); text-decoration: line-through; }
+#rec-scene-add input { width: 100%; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font-size: 12.5px; outline: none; }
+#rec-scene-reset { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; font-size: inherit; }
 .cue-note { margin: auto 0 0; padding-top: 8px; color: var(--muted); font-size: 11.5px; }
 body.rec #viewer { bottom: var(--rec-h, 0px); height: auto; }
 body.rec #views, body.rec #view-hint, body.rec #activity { display: none; }
@@ -294,6 +296,13 @@ body.rec #hand-status { display: none; }
 #scan-status { margin: 0; min-height: 2.6em; font-size: 13px; color: var(--muted); }
 #scan-status.busy { color: var(--accent); } #scan-status.error { color: #fecaca; }
 .scan-note { margin: 0; font-size: 12px; color: var(--muted); }
+#scan-list-box h3, #rec-cues h3 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#scan-list-box h3 small, #rec-cues h3 small { font-weight: 500; letter-spacing: 0; text-transform: none; }
+#scan-list, #rec-scans, #rec-scene { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+#scan-list li, #rec-scans li, #rec-scene li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel-2); font-size: 12.5px; }
+#scan-list button, #rec-scans button, #rec-scene button { padding: 0 6px; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer; font-size: 12px; }
+#scan-list button:hover, #rec-scans button:hover, #rec-scene button:hover { color: #fecaca; background: #3a1518; }
 .scan-note a { color: var(--accent); }
 @media (max-width: 700px) { #scan-panel { grid-template-columns: 1fr; overflow-y: auto; } }
 
