@@ -146,6 +146,39 @@ button.danger:hover { background: #7f1d1d; border-color: var(--bad); color: #fff
 #rec { position: absolute; inset: 0; pointer-events: none; --you: #60a5fa; --brain: #fbbf24; --llm: #c084fc; --arm: #fb923c; }
 #rec[hidden] { display: none; }
 body.rec #app { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+/* The recorded area is exactly 16:9, as big as fits; the cue column on the right is not recorded. */
+body.rec { display: grid; grid-template-columns: minmax(0, 1fr) 272px; background: #05080c; overflow: hidden; }
+body.rec #app { height: auto; width: min(calc(100vw - 272px), calc(100vh * 16 / 9)); aspect-ratio: 16 / 9;
+  align-self: center; justify-self: center; background: var(--bg); outline: 1px solid #1c2633; }
+#rec-cues { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; overflow-y: auto;
+  background: #0e131a; border-left: 1px solid var(--line); font-size: 13px; }
+#rec-cues[hidden] { display: none; }
+#rec-cues h3 { margin: 6px 0 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#rec-cues h3 small { font-weight: 500; letter-spacing: 0; text-transform: none; }
+#tape-state { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel); }
+#tape-state i { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+#tape-state b { font-size: 16px; font-variant-numeric: tabular-nums; }
+#tape-state span { grid-column: 1 / -1; margin-top: 4px; color: #cbd5e1; font-size: 12px; line-height: 1.35; }
+#tape-state.recording { border-color: #ef4444; background: #2a0f12; }
+#tape-state.recording i { background: #ef4444; animation: pulse 1s infinite; }
+#tape-state.paused { border-color: var(--warn); background: #2a220c; }
+#tape-state.paused i { background: var(--warn); }
+#tape-state.saved { border-color: var(--good); }
+#tape-state.saved i { background: var(--good); }
+#tape-state.error { border-color: var(--bad); }
+#tape-state.error i { background: var(--bad); }
+#rec-keys { display: flex; flex-direction: column; gap: 4px; }
+#rec-keys button { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid transparent; border-radius: 8px;
+  background: none; text-align: left; cursor: pointer; }
+#rec-keys button:hover { border-color: var(--line); background: var(--panel); }
+#rec-cues kbd { display: inline-block; min-width: 30px; padding: 2px 6px; border-radius: 6px; border: 1px solid #3a4758;
+  border-bottom-width: 2px; background: var(--panel-2); font: 700 12px/1.4 ui-monospace, monospace; text-align: center; }
+.key-note { padding: 4px 8px; color: var(--muted); font-size: 12px; }
+#rec-script { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 5px; }
+#rec-script li { cursor: pointer; line-height: 1.35; color: var(--text); }
+#rec-script li.done { color: var(--muted); text-decoration: line-through; }
+.cue-note { margin: auto 0 0; padding-top: 8px; color: var(--muted); font-size: 11.5px; }
 body.rec #viewer { bottom: var(--rec-h, 0px); height: auto; }
 body.rec #views, body.rec #view-hint, body.rec #activity { display: none; }
 
