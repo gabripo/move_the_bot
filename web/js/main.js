@@ -229,6 +229,7 @@ Object.assign(window.mtb, {
 scanner = new Scanner({
   send: (text) => { rec?.source(text, "scan"); send(text); },
   onEvent: (state, info) => rec?.scan(state, info),
+  quickStart: () => !!rec && !teleopOn,       // recording mode: Space / 👍 start a scan at once
 });
 window.mtb.scanner = scanner;
 
@@ -238,4 +239,5 @@ if (params.has("rec")) {
     toggleHand: () => $("hand-toggle").click(), toggleMic: () => $("mic").click(),
     scans: () => scanner.scans(), forget: (name) => scanner.forget(name),
   } });
+  scanner.watchIdle($("rec-cam"));            // a 👍 to the webcam bubble starts a scan
 }
