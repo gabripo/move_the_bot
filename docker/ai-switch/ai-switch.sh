@@ -5,12 +5,16 @@
 # Written for Bazzite (Fedora Atomic), like the two server scripts.
 #
 #   ./ai-switch.sh install     install as `ai-switch`, with the Gaming Mode default, a launcher and
-#                              the tray icon of Desktop Mode (ai-switch-tray.py, next to this script)
+#                              the tray icon of Desktop Mode (ai-switch-tray.py, next to this script);
+#                              AI is then off by default: nothing AI starts with the PC
 #
 # Then:
 #   ai-switch now              switch them on or off right now (no password; boot settings stay)
 #   ai-switch off              stop everything AI and keep it off after a reboot
 #   ai-switch on               start it again, with the boot settings it had before
+#   ai-switch default off|on   off (the default): nothing AI starts with the PC or Desktop Mode,
+#                              switch it on when needed; on: both start with the PC. Running
+#                              services keep running either way
 #   ai-switch status           what runs, what starts at boot, who uses the GPU's compute
 #   ai-switch tray             the "AI" tray icon: click for all on/off, right-click for each
 #                              service; starts by itself with Desktop Mode
@@ -120,6 +124,17 @@ cmd_session() {
   return 0
 }
 
+# What starts with the PC, without starting or stopping anything now.
+cmd_default() {
+  case "${1:-}" in
+    off|on) sudo -v
+            for s in "${SERVICES[@]}"; do installed "$s" && { [ "$(boot "$s")" = "$1" ] || set_boot "$s" "$1"; }; done
+            sudo rm -f "$STATE"           # "on" after "off" no longer brings back older settings
+            echo "By default AI is $1: $([ "$1" = off ] && echo "nothing AI starts with the PC; switch it on with the tray icon or ai-switch now" || echo "both start with the PC")." ;;
+    *) echo "ai-switch default off|on"; exit 1 ;;
+  esac
+}
+
 cmd_gaming_mode() {
   case "${1:-}" in
     off|keep) sudo mkdir -p "$(dirname "$GAMING")" && echo "$1" | sudo tee "$GAMING" >/dev/null
@@ -161,6 +176,7 @@ polkit.addRule(function (action, subject) {
 RULES
   sudo chmod 644 "$POLKIT"
   [ -f "$GAMING" ] || { sudo mkdir -p "$(dirname "$GAMING")"; echo off | sudo tee "$GAMING" >/dev/null; }
+  cmd_default off >/dev/null                # AI off by default: `ai-switch default on` to change
 
   mkdir -p "$(dirname "$SESSION_UNIT")"
   cat > "$SESSION_UNIT" <<UNIT
@@ -211,6 +227,7 @@ DESKTOP
   echo "Installed: ai-switch, the launcher \"AI services on/off\" in the application menu,"
   [ -f "$TRAY" ] && echo "the \"AI\" tray icon of Desktop Mode (starts with it; now: ai-switch tray),"
   echo "and the Gaming Mode default (ai-switch gaming-mode: $(gaming_default))."
+  echo "AI is off by default: nothing AI starts with the PC (ai-switch default on to change)."
   cmd_status
 }
 
@@ -219,9 +236,10 @@ case "${1:-now}" in
   on) cmd_on ;;
   off) cmd_off ;;
   session) cmd_session ;;
+  default) cmd_default "${2:-}" ;;
   gaming-mode) cmd_gaming_mode "${2:-}" ;;
   status) cmd_status ;;
   tray) exec python3 "$TRAY" ;;
   install) cmd_install ;;
-  *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

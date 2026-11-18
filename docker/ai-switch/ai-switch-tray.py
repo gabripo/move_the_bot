@@ -4,7 +4,8 @@
 An "AI" icon, green while the language model (Ollama) or the image-to-3D server (Idol) runs,
 grey when both are off.
   left-click   all AI on or off, right now (the boot settings stay as they are)
-  right-click  each service on its own, what runs, and the Gaming Mode setting
+  right-click  each service on its own, what runs, and the settings: by default nothing AI starts
+             with the PC (`ai-switch default`), and Gaming Mode switches it off
 No password: the polkit rule from `ai-switch install` lets this user start and stop these two
 services. Switching off while a scan is being made asks first. Installed by `ai-switch install`,
 started with Desktop Mode (~/.config/autostart), or by hand with `ai-switch tray`.
@@ -70,6 +71,18 @@ def switch(service: str, on: bool) -> str:
     r = subprocess.run(["systemctl", "--no-ask-password", "start" if on else "stop", service],
                        capture_output=True, text=True)
     return "" if r.returncode == 0 else (r.stderr.strip() or f"could not {'start' if on else 'stop'} {service}")
+
+
+def starts_with_pc() -> bool:
+    """Whether any AI service starts at boot (`ai-switch default on`); off by default."""
+    for s in installed():
+        try:
+            text = (UNITS / f"{s}.container").read_text()
+        except OSError:
+            continue
+        if any(line.startswith("WantedBy=multi-user.target") for line in text.splitlines()):
+            return True
+    return False
 
 
 def gaming_default() -> str:
@@ -179,6 +192,9 @@ def run_tray() -> int:
             a.setChecked(on)
             a.triggered.connect(lambda checked, s=s: set_services([s], checked))
         menu.addSeparator()
+        b = menu.addAction("Starts with the PC: " + ("yes" if starts_with_pc() else "no")
+                           + "  (ai-switch default on|off)")
+        b.setEnabled(False)
         g = menu.addAction("In Gaming Mode: " + ("AI off" if gaming_default() == "off" else "no change")
                            + "  (ai-switch gaming-mode)")
         g.setEnabled(False)

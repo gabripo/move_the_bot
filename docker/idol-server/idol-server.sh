@@ -4,8 +4,9 @@
 # with Idol on the GPU, in a container built here, as a system service, next to Ollama.
 # Written for Bazzite (Fedora Atomic), like ollama-server.sh; needs Podman and systemd.
 #
-#   ./idol-server.sh install            build and set up; start now and at every boot
-#   ./idol-server.sh install --no-boot  the same, but start only when you ask
+#   ./idol-server.sh install            build, set up and start it now; it does not start at
+#                                       boot (AI is off by default; ai-switch.sh)
+#   ./idol-server.sh install --boot     the same, and start it at every boot
 #
 # After install the script is available as `idol-server`:
 #   idol-server login                  once: your Hugging Face token (Idol reads images through
@@ -148,8 +149,8 @@ wait_ready() {
 addresses() { hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' || true; }
 
 cmd_install() {
-  local boot=on
-  [ "${1:-}" = "--no-boot" ] && boot=off
+  local boot=off                              # AI is off by default; --boot to start at boot
+  [ "${1:-}" = "--boot" ] && boot=on
   command -v podman >/dev/null || { echo "Podman is needed (Bazzite and Fedora have it)."; exit 1; }
   [ -e /dev/kfd ] || { echo "/dev/kfd is missing: ROCm cannot see the GPU on this system."; exit 1; }
   sudo -v

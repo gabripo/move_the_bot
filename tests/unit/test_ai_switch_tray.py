@@ -38,3 +38,12 @@ def test_no_idol_means_no_scan(monkeypatch):
     def refuse(*a, **k): raise OSError("connection refused")
     monkeypatch.setattr(tray.urllib.request, "urlopen", refuse)
     assert tray.scanning() == ""
+
+
+def test_starts_with_the_pc_only_when_a_unit_is_wanted_at_boot(tmp_path, monkeypatch):
+    monkeypatch.setattr(tray, "UNITS", tmp_path)
+    (tmp_path / "ollama.container").write_text("[Install]\n# WantedBy=multi-user.target    (boot start is off)\n")
+    (tmp_path / "idol.container").write_text("[Install]\n# WantedBy=multi-user.target\n")
+    assert not tray.starts_with_pc()
+    (tmp_path / "idol.container").write_text("[Install]\nWantedBy=multi-user.target\n")
+    assert tray.starts_with_pc()
