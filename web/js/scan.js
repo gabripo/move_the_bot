@@ -11,6 +11,8 @@
 // Starting: the Start button, the Space key, a thumbs-up to the camera, or saying (or typing)
 // "scan my mug" / "scan a stapler, 8 cm". A countdown leaves time to show the object. Between
 // photos the next one comes by itself after a few seconds; Space or "next" takes it at once.
+// In recording mode (quickStart) Space and a thumbs-up also start a scan with the panel closed:
+// the thumbs-up is then watched through the webcam bubble, and the last name is used again.
 //
 // A scan that went wrong is forgotten with the ✕ next to it in "Your scans", or by saying (or
 // typing) "delete the mug scan" / "forget the scanned mug": the object is taken off the table, and
@@ -29,9 +31,11 @@ const STEPS = {
 };
 
 export class Scanner {
-  constructor({ send, onEvent }) {
+  constructor({ send, onEvent, quickStart }) {
     this.send = send;
     this.onEvent = onEvent || (() => {});
+    this.quickStart = quickStart || (() => false);     // Space / 👍 with the panel closed
+    try { this.lastName = localStorage.getItem("mtb.scan.name") || ""; } catch { this.lastName = ""; }
     this.health = null;
     this.stream = null;
     this.state = "closed";      // closed | ready | capturing | working
@@ -43,8 +47,10 @@ export class Scanner {
     $("scan-cancel").addEventListener("click", () => this.close());
     $("scan-form").addEventListener("submit", (e) => { e.preventDefault(); this.trigger(); });
     window.addEventListener("keydown", (e) => {
-      if (this.state === "closed" || e.key !== " " || e.target.tagName === "INPUT") return;
+      if (e.key !== " " || e.repeat || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (this.state === "closed" && !(this.quickStart() && !$("btn-scan").hidden)) return;
       e.preventDefault();
+      if (e.target.tagName === "BUTTON") e.target.blur();
       this.trigger();
     });
     this._check();
@@ -81,6 +87,7 @@ export class Scanner {
   async open({ name = "", height = null, start = false } = {}) {
     if (this.state === "working") return;
     if (name) $("scan-name").value = name;
+    else if (!$("scan-name").value && this.lastName) $("scan-name").value = this.lastName;
     if (height) $("scan-height").value = String(height);
     if (this.state === "closed") {
       this.state = "ready";
@@ -88,7 +95,8 @@ export class Scanner {
       $("scan-thumbs").replaceChildren();
       this._overlay("");
       this._status("Hold the object inside the square, on a plain background. Start: the button, Space, a 👍 or say “scan …”.");
-      if (!name) $("scan-name").focus();
+      if (!$("scan-name").value) $("scan-name").focus();     // else Space would type into it
+      else if (document.activeElement === $("scan-name")) $("scan-name").blur();
       try {
         this.stream = await openCamera({ width: { ideal: 1280 }, height: { ideal: 720 } });
         $("scan-cam").srcObject = this.stream;
@@ -106,6 +114,7 @@ export class Scanner {
   close() {
     if (this.state === "working") return;          // the GPU is busy; the result still arrives
     this.state = "closed";
+    this.closedAt = performance.now();
     this.skip?.();
     if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
     this.stream = null;
@@ -115,7 +124,8 @@ export class Scanner {
 
   // The button, Space, "next", a thumbs-up: start, or take the next photo now.
   trigger() {
-    if (this.state === "ready" && !this.starting) this._run();
+    if (this.state === "closed") this.open({ start: !!this.lastName });   // recording mode: Space / 👍
+    else if (this.state === "ready" && !this.starting) this._run();
     else if (this.state === "capturing") this.skip?.();
   }
 
@@ -186,7 +196,10 @@ export class Scanner {
 
   async _run() {
     const name = $("scan-name").value.trim();
-    if (!name) { this._status("Give it a name first.", "error"); $("scan-name").focus(); return; }
+    if (!name) { this._status("Give it a name first, then Enter.", "error"); $("scan-name").focus(); return; }
+    this.lastName = name;
+    try { localStorage.setItem("mtb.scan.name", name); } catch { /* private mode */ }
+    if (document.activeElement === $("scan-name") || document.activeElement === $("scan-height")) document.activeElement.blur();
     this.starting = true;
     for (let t = 0; t < 30 && !$("scan-cam").videoWidth; t++) await new Promise((r) => setTimeout(r, 100));
     this.starting = false;
@@ -324,11 +337,30 @@ export class Scanner {
     look();
   }
 
+  // Recording mode: a thumbs-up to the webcam bubble starts a scan with the panel closed.
+  async watchIdle(video) {
+    try {
+      this.hands ||= await loadHandLandmarker();
+    } catch { return; }
+    const look = () => {
+      if (this.state === "closed" && this.quickStart() && !$("btn-scan").hidden && video.readyState >= 2 && video.videoWidth) {
+        try { this.seeHand(this.hands.detectForVideo(video, performance.now()).landmarks?.[0]); } catch { /* a frame it could not read */ }
+      }
+      setTimeout(look, 150);
+    };
+    look();
+  }
+
   // One look at the hand (21 landmarks, or nothing); tests call it with a synthetic one. A
   // thumbs-up held for half a second starts; the tracker missing it for a moment does not reset it.
   seeHand(landmarks, now = performance.now()) {
-    if (this.state !== "ready" || !isThumbsUp(landmarks)) return;
-    if (!this.thumbSince || now - this.thumbLast > 1000) this.thumbSince = now;   // slow trackers: a frame or two a second
+    // Closed: only in recording mode, and not just after a scan (the hand may still be up).
+    if (this.state !== "ready" && !(this.state === "closed" && this.quickStart() && now - (this.closedAt || -1e9) > 5000)) return;
+    if (!isThumbsUp(landmarks)) return;
+    if (!this.thumbSince || now - this.thumbLast > 1000) {           // slow trackers: a frame or two a second
+      this.thumbSince = now;
+      if (this.state === "ready") this._status("👍 seen: hold it…", "busy");
+    }
     this.thumbLast = now;
     if (now - this.thumbSince > 500) { this.thumbSince = 0; this.trigger(); }
   }
