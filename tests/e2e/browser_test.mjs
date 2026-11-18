@@ -166,7 +166,9 @@ await check("recording mode: a 16:9 demo area, the keys and script beside it", a
   assert.ok(Math.abs(box.ratio - 16 / 9) < 0.01, `demo area is ${box.ratio.toFixed(3)}, not 16:9`);
   assert.ok(box.cuesWidth > 200 && box.cuesLeft >= box.appRight - 1, JSON.stringify(box));   // outside what is recorded
   assert.ok(box.keys >= 8 && box.script >= 5, JSON.stringify(box));
-  await rec.click("#rec-script li");                  // a clicked line is ticked, R unticks it
+  // A clicked line is ticked, R unticks it. Clicked directly: the column may still be growing
+  // (the list of scans arrives a moment later), which keeps a pointer click waiting.
+  await rec.$eval("#rec-script li", (li) => li.click());
   assert.equal(await rec.locator("#rec-script li.done").count(), 1);
   await rec.keyboard.press("r");
   assert.equal(await rec.locator("#rec-script li.done").count(), 0);
