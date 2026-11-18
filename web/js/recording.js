@@ -3,20 +3,37 @@
 // the system that is working (the browser, the ROS 2 "brain", the language model on another
 // computer, the arm); the webcam shows the person in a round bubble.
 //
-// Keys (when the command box is not focused):
+// Keys (when the command box is not focused), also listed, clickable, in a column beside the
+// recorded area, with the script of the demo as a checklist; that column is never recorded:
+//   V  start / stop the video (Chrome records this tab, cropped to the demo; saved to Downloads)
+//   P  pause / resume the video
 //   S  set the scene: clear the table and create the objects for the demo (not captioned)
-//   R  ready for a take: clear captions and show the opening title
+//   R  ready for a take: clear captions, show the opening title, untick the script
 //   E  show or hide the closing card          H  hand control on/off
 //   M  speak a command                         Esc  stop the arm
+//   /  type a command
 //
 // URL options: hook=…&hook2=… (opening title), setup=… (objects for S, ";" between commands),
-// desk=0 (plain table instead of a desk), llmpc=… (where the language model runs).
+// desk=0 (plain table instead of a desk), llmpc=… (where the language model runs),
+// script=… (the script in the cue column, ";" between lines).
 
 import { openCamera } from "./camera.js";
+import { Tape } from "./tape.js";
 
 const $ = (id) => document.getElementById(id);
 const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
+const SCRIPT = [
+  "R · opening title, 2 s",
+  "M · “I'm thirsty” (the LLM plans it)",
+  "type “put the apple on the cube” (rules)",
+  "H · steer with the hand, pinch to grab · H",
+  "“create a ball here”",
+  "👍 or “scan my mug” · 4 sides, a quarter turn each",
+  "wait for the GPU PC (cut in the edit)",
+  "“pick up the mug”",
+  "E · end card, 3 s · V stops the video",
+];
 const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️", scan: "📷" };
 
 export class Recording {
@@ -66,7 +83,53 @@ export class Recording {
       } catch { /* ignore */ }
     }, { latched: true });
     window.addEventListener("keydown", (e) => this._key(e));
+    this._cues(params);
     this.ready();
+  }
+
+  // The column beside the recorded area: the video's state, the keys (clickable) and the script.
+  _cues(params) {
+    $("rec-cues").hidden = false;
+    for (const button of $("rec-keys").querySelectorAll("button")) {
+      button.addEventListener("mousedown", (e) => e.preventDefault());   // keep the focus where it was (Space scans)
+      button.addEventListener("click", () => this._do(button.dataset.key));
+    }
+    const lines = params.get("script") ? params.get("script").split(";").map((l) => l.trim()).filter(Boolean) : SCRIPT;
+    for (const line of lines) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      li.addEventListener("click", () => li.classList.toggle("done"));
+      $("rec-script").appendChild(li);
+    }
+    const show = (cls, title, note) => {
+      $("tape-state").className = cls;
+      $("tape-state").querySelector("b").textContent = title;
+      $("tape-state").querySelector("span").textContent = note;
+    };
+    const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    const crop = () => (this.tape.cropped ? "only the demo area" : "the whole tab: the cues are in it");
+    let timer = null;
+    this.tape = new Tape({
+      element: $("app"),
+      onState: (state, info) => {
+        clearInterval(timer);
+        if (state === "recording") {
+          const tick = () => show("recording", `REC ${clock(this.tape.seconds)}`, `P pauses · V stops and saves · ${crop()}`);
+          tick();
+          timer = setInterval(tick, 250);
+        } else if (state === "paused") {
+          show("paused", `Paused ${clock(this.tape.seconds)}`, "P resumes · V stops and saves");
+        } else if (state === "starting") {
+          show("starting", "Starting…", "Chrome asks which tab: choose this one, then Share");
+        } else if (state === "saved") {
+          show("saved", `Saved · ${clock(info.seconds)}`, `${info.name} in Downloads (${info.megabytes.toFixed(1)} MB) · V records again`);
+        } else if (state === "error") {
+          show("error", "Could not record", `${info.message} · use ⌘⇧5 instead`);
+        } else {
+          show("idle", "Not recording", "V starts · Chrome asks which tab: this one");
+        }
+      },
+    });
   }
 
   // The page tells us how a command was given, before sending it.
@@ -187,18 +250,28 @@ export class Recording {
   }
 
   _key(e) {
-    if (e.key === "Escape") { this.actions.stop(); return; }
-    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
-    const key = e.key.toLowerCase();
-    if (key === "s") {
+    if (e.key === "Escape") { this._do("escape"); return; }
+    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (this._do(e.key.toLowerCase())) e.preventDefault();
+  }
+
+  // A key, pressed or clicked in the cue column. Returns whether it was one of ours.
+  _do(key) {
+    if (key === "escape") this.actions.stop();
+    else if (key === "v") this.tape.toggle();
+    else if (key === "p") this.tape.pause();
+    else if (key === "s") {
       this.setup.forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
       this.ready();
-    } else if (key === "r") this.ready();
-    else if (key === "e") { $("rec-end").hidden = !$("rec-end").hidden; this._hideHook(0); }
+    } else if (key === "r") {
+      this.ready();
+      for (const li of $("rec-script").children) li.classList.remove("done");
+    } else if (key === "e") { $("rec-end").hidden = !$("rec-end").hidden; this._hideHook(0); }
     else if (key === "h") this.actions.toggleHand();
     else if (key === "m") this.actions.toggleMic();
-    else return;
-    e.preventDefault();
+    else if (key === "/") $("command").focus();
+    else return false;
+    return true;
   }
 
   // ------------------------------------------------------------------ drawing

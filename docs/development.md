@@ -70,6 +70,21 @@ node screenshots.mjs            # writes ../../docs/media/*.png and demo.webm
 The hand-control pictures use a scripted hand (`fakeHand` in `web/js/hand.js`), because there
 is no webcam in CI. The rest of the path, from hand position to joint motion, is the real one.
 
+## Recording a demo by hand
+
+Open the page in recording mode, in its own Chrome window:
+
+```bash
+open -na "Google Chrome" --args --app="http://localhost:8080/?rec" --window-size=1920,1080
+```
+
+The demo area (3D view, captions, diagram, command bar) is 16:9; a column on its right lists the
+keys and the script of the demo, and is never in the video. **V** starts recording: Chrome asks
+which tab to share, choose this one. **P** pauses and resumes, **V** again stops and saves an MP4
+of the demo area only to Downloads. The other keys: **S** sets the scene, **R** shows the opening
+title (and unticks the script), **M** speaks, **H** hand control, **E** the end card, **Esc** stops
+the arm, **/** types a command. `&script=line one;line two` replaces the script.
+
 ## Troubleshooting
 
 | Symptom | Likely cause and fix |

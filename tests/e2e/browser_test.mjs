@@ -1,7 +1,7 @@
 // Browser end-to-end test: the real page, talking to the real ROS stack through rosbridge.
 //   cd tests/e2e && npm install && npx playwright install chromium && node browser_test.mjs
 import assert from "node:assert/strict";
-import { holdHand, moveHand, object, openApp, sayAndWait, sleep } from "./lib.mjs";
+import { BASE_URL, holdHand, moveHand, object, openApp, sayAndWait, sleep } from "./lib.mjs";
 
 const { browser, page, problems } = await openApp();
 const check = async (name, fn) => {
@@ -152,6 +152,26 @@ if (process.env.CHECK_SCAN === "1") {
   });
   await sayAndWait(page, "clear the table");
 }
+
+await check("recording mode: a 16:9 demo area, the keys and script beside it", async () => {
+  const rec = await browser.newPage({ viewport: { width: 1600, height: 820 } });
+  await rec.goto(`${BASE_URL}?rec`);
+  await rec.waitForFunction(() => window.mtb && window.mtb.ready(), null, { timeout: 120000 });
+  const box = await rec.evaluate(() => {
+    const app = document.getElementById("app").getBoundingClientRect();
+    const cues = document.getElementById("rec-cues").getBoundingClientRect();
+    return { ratio: app.width / app.height, appRight: app.right, cuesLeft: cues.left, cuesWidth: cues.width,
+      keys: document.querySelectorAll("#rec-keys button").length, script: document.querySelectorAll("#rec-script li").length };
+  });
+  assert.ok(Math.abs(box.ratio - 16 / 9) < 0.01, `demo area is ${box.ratio.toFixed(3)}, not 16:9`);
+  assert.ok(box.cuesWidth > 200 && box.cuesLeft >= box.appRight - 1, JSON.stringify(box));   // outside what is recorded
+  assert.ok(box.keys >= 8 && box.script >= 5, JSON.stringify(box));
+  await rec.click("#rec-script li");                  // a clicked line is ticked, R unticks it
+  assert.equal(await rec.locator("#rec-script li.done").count(), 1);
+  await rec.keyboard.press("r");
+  assert.equal(await rec.locator("#rec-script li.done").count(), 0);
+  await rec.close();
+});
 
 await check("no JavaScript errors on the page", async () => {
   const real = problems.filter((p) => !/favicon|GPU stall|ReadPixels/.test(p));

@@ -143,6 +143,26 @@
       </details>
     </aside>
   </main>
+
+  <!-- Recording mode: the keys and the script beside the recorded area, never in the video. -->
+  <aside id="rec-cues" hidden aria-label="Recording keys and script">
+    <div id="tape-state" class="idle"><i></i><b>Not recording</b><span>V starts · Chrome asks which tab: this one</span></div>
+    <h3>Keys</h3>
+    <div id="rec-keys">
+      <button type="button" data-key="v"><kbd>V</kbd><span>Start / stop the video</span></button>
+      <button type="button" data-key="p"><kbd>P</kbd><span>Pause / resume the video</span></button>
+      <button type="button" data-key="s"><kbd>S</kbd><span>Set the scene</span></button>
+      <button type="button" data-key="r"><kbd>R</kbd><span>Ready: opening title</span></button>
+      <button type="button" data-key="m"><kbd>M</kbd><span>Speak (mic on / off)</span></button>
+      <button type="button" data-key="h"><kbd>H</kbd><span>Hand control on / off</span></button>
+      <button type="button" data-key="e"><kbd>E</kbd><span>End card</span></button>
+      <button type="button" data-key="escape"><kbd>Esc</kbd><span>Stop the arm</span></button>
+      <div class="key-note"><kbd>Space</kbd> or 👍 scan photo · <kbd>/</kbd> type a command</div>
+    </div>
+    <h3>Script <small>click a line when done · R clears</small></h3>
+    <ol id="rec-script"></ol>
+    <p class="cue-note">This column is not in the video.</p>
+  </aside>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
