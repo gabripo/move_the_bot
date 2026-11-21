@@ -12,7 +12,8 @@ splat into coloured points, stands it upright, turns the photographed side towar
 the recording view (?rec) and writes models/local/<name>.glb. That folder is never committed:
 see models/local/README.md. Rebuild the images afterwards (./run.sh --rebuild).
 
-Needs numpy. --image also needs gradio_client (pip install gradio_client); the demo runs on
+A mug, cup or can (by its name) that looks like a cylinder is made solid instead: see
+solid_mug.py (needs scipy and Pillow; --points keeps the points). Needs numpy. --image also needs gradio_client (pip install gradio_client); the demo runs on
 Hugging Face's shared GPUs, which give a limited daily quota without a Hugging Face login.
 """
 from __future__ import annotations
@@ -324,6 +325,8 @@ def main() -> None:
     p.add_argument("--min-opacity", type=float, default=0.12, help="drop fainter Gaussians")
     p.add_argument("--step", type=float, default=None,
                    help="with several --ply: the turn between photos (default: one full turn in all)")
+    p.add_argument("--points", action="store_true",
+                   help="keep the points: no solid model, even for a mug, cup or can (solid_mug.py)")
     args = p.parse_args()
 
     out = ROOT / "models" / "local"
@@ -335,8 +338,19 @@ def main() -> None:
         splat = read_ply(args.ply[0] if args.ply else run_idol(args.image, args.gaussians, args.seed, out))
     points, colours = splat_to_points(splat, args.min_opacity, args.yaw)
     target = out / f"{args.name.lower().replace(' ', '_')}.glb"
-    write_glb(target, points, colours)
-    print(f"Wrote {target.relative_to(ROOT)}: {len(points):,} points. Rebuild with ./run.sh --rebuild "
+    solid = None
+    if not args.points:
+        sys.path.insert(0, str(Path(__file__).parent))
+        import solid_mug                          # round things become solid; needs scipy and Pillow
+        if solid_mug.is_round_name(args.name) and solid_mug.fits_cylinder(points):
+            solid = solid_mug.solid_glb(points, colours)
+    if solid:
+        target.write_bytes(solid)
+        what = "a solid model (--points keeps the points)"
+    else:
+        write_glb(target, points, colours)
+        what = f"{len(points):,} points"
+    print(f"Wrote {target.relative_to(ROOT)}: {what}. Rebuild with ./run.sh --rebuild "
           f"and create a {args.name} to see it.")
 
 

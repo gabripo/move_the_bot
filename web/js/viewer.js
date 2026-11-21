@@ -359,14 +359,16 @@ export class Viewer {
         let points = null;
         model.traverse((m) => { if (m.isPoints) points = m; });
         // Our own models and point clouds (made from a photo by scripts/photo_to_3d.py or the
-        // scanner) are made to size: scaled to the height, a handle may stick out. Downloaded
+        // scanner, solid or not) are made to size: scaled to the height, a handle may stick out. Downloaded
         // ones can be any size and shape, so they are fitted inside the object's box.
-        const toSize = points || o.model.includes("/builtin/") || o.model.includes("/local/");
+        // Solid models made from a scan (scripts/solid_mug.py) are ours too, wherever they are kept.
+        const ours = points || o.model.includes("/local/") || /^move_the_bot/.test(gltf.asset?.generator || "");
+        const toSize = ours || o.model.includes("/builtin/");
         const scale = toSize ? sz / (size.y || 1)
           : Math.min(sx / (size.x || 1), sz / (size.y || 1), sy / (size.z || 1));
         // Photo-made models put their footprint at x = z = 0, so a handle does not push the body
         // off the object's place (where the robot grasps): centre those only vertically.
-        const footprint = points || o.model.includes("/local/");
+        const footprint = ours;
         model.position.sub(footprint ? new THREE.Vector3(0, centre.y, 0) : centre);
         holder.scale.setScalar(scale);
         model.traverse((m) => {

@@ -48,6 +48,11 @@ import models3d                                   # the same files as the robot'
 import photo_to_3d
 from world import COLORS, canonical_kind
 
+try:
+    import solid_mug                              # scripts/solid_mug.py (numpy, scipy, Pillow)
+except ImportError:                               # an older image (the GPU PC's Idol server): points only
+    solid_mug = None
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("scan")
 
@@ -472,6 +477,21 @@ def progress() -> dict:
     return p
 
 
+def _solid(kind: str, points, colours) -> tuple[bytes | None, bool]:
+    """A mug, cup or can (by its name) whose points look like a cylinder becomes a solid model
+    (scripts/solid_mug.py): seen up close, points are scattered dots. SOLID=0 keeps the points."""
+    if solid_mug is None or os.environ.get("SOLID", "1") == "0" or not solid_mug.is_round_name(kind):
+        return None, False
+    try:
+        if not solid_mug.fits_cylinder(points):
+            log.info("%s does not look like a cylinder: kept as points", kind)
+            return None, False
+        return solid_mug.solid_glb(points, colours), True
+    except Exception:                                 # a model of points is still a model
+        log.exception("Could not make %s solid: kept as points", kind)
+        return None, False
+
+
 @app.post("/scan")
 def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: float = Form(10.0),
          gaussians: int | None = Form(None)) -> dict:
@@ -487,10 +507,12 @@ def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: 
         points, colours = photo_to_3d.splat_to_points(photo_to_3d.parse_ply(splat))
         width, depth, height = photo_to_3d.real_size(points, height_cm / 100)
         size = (min(width, 0.25), min(depth, 0.25), height)
-        model = models3d.save_scanned(kind, photo_to_3d.glb_bytes(points, colours), size, MODELS_DIR)
+        glb, solid = _solid(kind, points, colours)
+        model = models3d.save_scanned(kind, glb or photo_to_3d.glb_bytes(points, colours), size, MODELS_DIR)
         took = time.monotonic() - start
-        log.info("Scanned %s from %d photo(s) in %.1f s: %d points, %s", kind, len(photos), took, len(points), size)
-        return {"name": kind, "model": model, "size": [round(v, 3) for v in size], "points": len(points),
+        log.info("Scanned %s from %d photo(s) in %.1f s: %d points%s, %s", kind, len(photos), took, len(points),
+                 ", made solid" if solid else "", size)
+        return {"name": kind, "model": model, "size": [round(v, 3) for v in size], "points": len(points), "solid": solid,
                 "views": len(angles), "angles": [round(a) for a in angles], "seconds": round(took, 1),
                 "backend": BACKEND, "where": WHERE[BACKEND]}
 
