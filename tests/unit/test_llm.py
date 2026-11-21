@@ -134,7 +134,7 @@ def test_a_scanned_drink_not_on_the_table_is_offered_to_create():
     world = World()
     world.add("mug", 0.2, 0.1)
     assert llm.drinks(world, ["monster drink", "stapler"]) == [
-        ("monster drink", "scanned, create it"), ("mug", "on the table")]
+        ("mug", "on the table"), ("monster drink", "scanned, create it")]     # the mug first: it is there
 
 
 def test_picking_a_scanned_object_that_is_not_there_creates_it():
@@ -150,3 +150,22 @@ def test_picking_a_scanned_object_that_is_not_there_creates_it():
     assert llm.create_missing(cube, world) == cube
     odd = [{"skill": "pick", "object": "unicorn"}]
     assert llm.create_missing(odd, world) == odd
+
+
+def test_a_drink_already_brought_comes_last():
+    world = World()
+    world.add("mug", 0.30, 0.0)                                   # at the front: brought already
+    world.add("monster drink", 0.2, 0.12, size=(0.066, 0.066, 0.17))
+    assert llm.drinks(world, ["monster drink"]) == [
+        ("monster drink", "scanned, on the table"), ("mug", "already brought to the user")]
+    assert "still thirsty" in llm.system_prompt().lower()
+
+
+def test_a_name_a_little_off_becomes_the_real_one():
+    world = World()
+    world.add("mug", 0.30, 0.0)
+    plan = [{"skill": "pick", "object": "monster drink"}, {"skill": "place", "at": {"position": "front"}}]
+    assert llm.create_missing(plan, world, ["monster"]) == [
+        {"skill": "spawn", "object": "monster", "at": {"position": "front"}}]
+    world.add("monster", 0.15, -0.12, size=(0.066, 0.066, 0.17))
+    assert llm.create_missing(plan, world, ["monster"])[0] == {"skill": "pick", "object": "monster"}

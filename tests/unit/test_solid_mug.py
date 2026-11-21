@@ -80,3 +80,45 @@ def test_a_point_cloud_glb_reads_back(tmp_path):
     back, srgb = solid_mug.read_points_glb(photo_to_3d.glb_bytes(points.astype(np.float32), colours))
     assert np.allclose(back, points, atol=1e-5)
     assert np.allclose(srgb, colours, atol=0.02)
+
+
+def can_photos(turn=-90.0, n=4, hand=True, size=400):
+    """Cut-out photos of a can 1 tall and 0.4 wide, its label red going round and green going up,
+    each photo a `turn` further round; a skin-coloured hand holding it from below."""
+    photos = []
+    for k in range(n):
+        img = np.zeros((size, size, 4), np.uint8)
+        top, bottom, xc, half = 70, 330, 200, 52
+        for x in range(int(xc - half) + 1, int(xc + half)):
+            s = (x - xc) / half
+            az = (solid_mug.FACE_CAMERA + k * turn - np.degrees(np.arcsin(s)) + 180) % 360 - 180
+            for y in range(top, bottom):
+                v = (y - top) / (bottom - top)
+                img[y, x] = [int(255 * (az + 180) / 360), int(255 * v), 40, 255]
+        if hand:
+            img[320:360, 150:250] = [225, 170, 140, 255]      # skin, below and over the bottom
+        photos.append(img)
+    return photos
+
+
+def test_a_can_is_wrapped_from_its_photos_the_right_way_round():
+    for turn in (-90.0, 90.0):
+        glb, aspect, found = solid_mug.wrap_can(can_photos(turn), size=(360, 180))
+        assert found == turn
+        assert abs(aspect - 104 / 260) < 0.03
+        doc = parse(glb)
+        assert [m["name"] for m in doc["materials"]] == ["print", "lid", "plain"]
+        # The label, unrolled: red grows with the angle round, green with the height down.
+        from PIL import Image
+        import io
+        view = doc["bufferViews"][doc["images"][0]["bufferView"]]
+        start = 20 + struct.unpack("<I", glb[12:16])[0] + 8 + view["byteOffset"]
+        tex = np.array(Image.open(io.BytesIO(glb[start:start + view["byteLength"]]))).astype(float)
+        az = (np.arange(360) + 0.5) - 180
+        red = 255 * (az + 180) / 360
+        middle = tex[60:120]
+        err = np.abs(middle[..., 0] - red[None, :])
+        assert np.median(err) < 8, np.median(err)
+        assert abs(np.median(tex[30, :, 1]) - 255 * 30 / 180) < 15        # green: the height
+        hand = (np.abs(tex[..., :3] - [225, 170, 140]).max(-1) < 20).mean()
+        assert hand < 0.01, hand                                           # the hand is not painted on

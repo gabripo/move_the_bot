@@ -117,6 +117,14 @@ def _normalise(v: dict[str, np.ndarray], min_opacity: float = 0.12):
     height = max(base - top, 1e-6)
     foot = solid[solid[:, 1] > base - 0.03 * height]
     lo, hi = np.percentile(foot[:, [0, 2]], 2, axis=0), np.percentile(foot[:, [0, 2]], 98, axis=0)
+    # Hands holding the object from below make a footprint wider than the object: then the middle
+    # of its body (40-70 % of the height, above a hand) is the centre. Each view's centre must be
+    # the object's own, or the merged views land beside each other.
+    body = solid[(solid[:, 1] < base - 0.4 * height) & (solid[:, 1] > base - 0.7 * height)]
+    if len(body) > 50:
+        blo, bhi = np.percentile(body[:, [0, 2]], 2, axis=0), np.percentile(body[:, [0, 2]], 98, axis=0)
+        if np.any(hi - lo > 1.3 * (bhi - blo)):
+            lo, hi = blo, bhi
     centre = np.array([(lo[0] + hi[0]) / 2, base, (lo[1] + hi[1]) / 2])
     return (xyz - centre) / height, height, opacity > min_opacity
 

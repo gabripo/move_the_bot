@@ -29,12 +29,13 @@ const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
 const SCRIPT = [
   "R · opening title, 2 s",
+  "M · “I'm thirsty!”: the LLM brings the mug",
   "type “put the apple on the cube” (rules)",
   "H · steer with the hand, pinch to grab · H",
   "“create a ball here”",
   "👍 or Space · type “monster drink”, 17 cm · Enter or 👍",
-  "4 sides, a quarter turn each; wait for the GPU PC (cut in the edit)",
-  "M · “I'm thirsty”: the LLM brings the Monster, not the mug",
+  "4 sides, a quarter turn each: cut out and wrapped in seconds",
+  "M · “I'm still thirsty!” or “I need a real drink!”: the Monster",
   "E · end card, 3 s · V stops the video",
 ];
 const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️", scan: "📷" };
@@ -162,7 +163,7 @@ export class Recording {
     if (state === "forgot") return;                 // between takes: nothing to caption
     if (state === "forget-failed") { this._sub(info.message, "error"); return; }
     const photos = (n) => (n > 1 ? `${n} photos` : "one photo");
-    const IDOL = "Idol · photos → 3D";
+    const IDOL = info.wrap || info.how === "wrapped" ? "SAM 2 · photos → can" : "Idol · photos → 3D";
     if (state === "capture") {
       this._hideHook(1500);
       const how = info.mode === "video" ? "a short video, one slow turn" : info.shots > 1 ? "4 sides, a quarter turn each" : "one photo";
@@ -174,15 +175,18 @@ export class Recording {
       this.scanSub = "";
       const gpu = ["remote", "local"].includes(info.backend);
       this._flow({ you: ["done", `📷 ${photos(info.views)}`], llm: gpu ? ["on", "receiving the photos…", IDOL] : ["skip", "not needed"] });
-      this._sub(gpu ? `Idol, an open image-to-3D model, turns ${photos(info.views)} into 3D on ${this.llmPc}'s GPU…`
-        : `Idol turns ${photos(info.views)} into 3D…`, gpu ? "llm" : "");
+      this._sub(info.wrap ? `SAM 2 cuts the can out of ${photos(info.views)} on ${this.llmPc}'s GPU; they are wrapped around a cylinder…`
+        : gpu ? `Idol, an open image-to-3D model, turns ${photos(info.views)} into 3D on ${this.llmPc}'s GPU…`
+          : `Idol turns ${photos(info.views)} into 3D…`, gpu ? "llm" : "");
     } else if (state === "progress") {
       if (!info.onGpu) return;
       const what = info.step === "idol" && info.views > 1 ? `photo ${info.view} of ${info.views}` : info.text.toLowerCase();
       this._flow({ llm: ["on", `${what} · ${Math.round(info.seconds || 0)} s`, IDOL] }, true);
     } else if (state === "done") {
-      this.scanSub = `3D from ${photos(info.views)} in ${info.seconds} s, made by Idol${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
-        + ` (${info.points.toLocaleString()} points)`;
+      this.scanSub = info.how === "wrapped"
+        ? `${photos(info.views)} wrapped around a cylinder in ${info.seconds} s, cut out by SAM 2${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
+        : `3D from ${photos(info.views)} in ${info.seconds} s, made by Idol${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
+          + (info.solid ? ", made solid" : ` (${(info.points || 0).toLocaleString()} points)`);
       this._sub(this.scanSub, info.onGpu ? "llm" : "");
       this._flow({ you: ["done", "📷 scanned"], ...(info.onGpu ? { llm: ["done", `${photos(info.views)} → 3D in ${Math.round(info.seconds)} s`, IDOL] } : {}) }, true);
     } else {
