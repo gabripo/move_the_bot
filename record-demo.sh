@@ -8,6 +8,9 @@
 #   ./record-demo.sh          set up and open the recording window
 #   ./record-demo.sh off      afterwards: switch the GPU PC's AI off again
 #   ./record-demo.sh check    only say what is ready and what is not
+#   ./record-demo.sh imovie [file...]   recordings -> .mov for iMovie (default: the newest one in
+#                             Downloads): H.264 + AAC, a constant 30 fps (Chrome records a variable
+#                             frame rate, on which editors drift); needs ffmpeg (brew install ffmpeg)
 #
 # The GPU PC is reached from .env: OLLAMA_URL and IDOL_URL (used by move_the_bot anyway), and, to
 # switch its AI on and off from here, GPU_PC_SSH="user@address" plus, if needed, GPU_PC_SSH_KEY.
@@ -63,8 +66,33 @@ case "${1:-}" in
     if pc_ai stop; then ok "language model and Idol stopped; the GPU is free for games"
     else bad "could not reach the PC (GPU_PC_SSH in .env), or ai-switch is not installed there"; exit 1; fi
     exit 0 ;;
+  imovie)
+    shift
+    command -v ffmpeg >/dev/null || { bad "ffmpeg is needed: brew install ffmpeg"; exit 1; }
+    files=("$@")
+    if [ ${#files[@]} = 0 ]; then
+      newest=$(ls -t "$HOME"/Downloads/move_the_bot-*.mp4 "$HOME"/Downloads/move_the_bot-*.webm 2>/dev/null | head -1)
+      [ -n "$newest" ] || { bad "no move_the_bot-*.mp4 in Downloads"; exit 1; }
+      files=("$newest")
+    fi
+    step "For iMovie"
+    for f in "${files[@]}"; do
+      out="${f%.*}.mov"
+      # Hardware H.264 (VideoToolbox) on a Mac, else x264; even sizes; AAC 48 kHz; index at the start.
+      enc=(-c:v h264_videotoolbox -b:v 20M -profile:v high)
+      ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_videotoolbox || enc=(-c:v libx264 -crf 17 -preset medium -profile:v high)
+      if ffmpeg -hide_banner -loglevel error -y -i "$f" -map 0:v:0 -map '0:a:0?' \
+           -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30' -fps_mode cfr "${enc[@]}" -pix_fmt yuv420p \
+           -c:a aac -b:a 192k -ar 48000 -movflags +faststart "$out"; then
+        sound=$(ffprobe -v error -select_streams a -show_entries stream=codec_name -of csv=p=0 "$out" | head -1)
+        ok "$(basename "$out") (${sound:-no sound track})"
+      else
+        bad "could not convert $f"
+      fi
+    done
+    exit 0 ;;
   ""|start) ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
 
 step "1. move_the_bot, with the object scanner"
@@ -121,8 +149,10 @@ check || true
 cat <<'TEXT'
 
 In the window: allow the camera and the microphone, press S (the scene), R (the opening title),
-then V to record (Chrome asks which tab: this one). P pauses, V stops and saves to Downloads.
+then V to record (Chrome asks which tab: this one, with "Also share tab audio" on; allow the
+microphone: your voice is recorded). P pauses, V stops and saves to Downloads.
 The keys and the script are in the column on the right, which is not recorded.
 A scan uses the GPU PC for about 3 minutes and unloads the language model meanwhile.
+For iMovie: ./record-demo.sh imovie (the newest recording -> a .mov next to it).
 Afterwards: ./record-demo.sh off
 TEXT
