@@ -317,6 +317,19 @@ def _can_frame(alpha: np.ndarray):
     return (l0 + r0) / 2, max(w0 / 2, 1.0), int(top), int(bottom)
 
 
+def _straightness(alpha: np.ndarray, top: int, bottom: int, half: float) -> float:
+    """How much the outline's left and right edges wander between top and bottom, as a share of
+    the width: a can's are straight (about 0), a person behind it makes them wander."""
+    rows = alpha[top:bottom + 1]
+    has = rows.any(1)
+    if has.sum() < 10:
+        return 1.0
+    left = np.argmax(rows[has], 1)
+    right = rows.shape[1] - 1 - np.argmax(rows[has][:, ::-1], 1)
+    return float((np.percentile(left, 90) - np.percentile(left, 10)
+                  + np.percentile(right, 90) - np.percentile(right, 10)) / (4 * half))
+
+
 def _skin(rgb: np.ndarray) -> np.ndarray:
     """Skin colours (YCrCb ranges), 0..255 RGB."""
     r, g, b = rgb[..., 0].astype(float), rgb[..., 1].astype(float), rgb[..., 2].astype(float)
@@ -375,6 +388,14 @@ def _unroll(cut: np.ndarray, hands, direction: float, W: int, Ht: int):
     return colour, weight, 2 * half / (bottom - top)
 
 
+def _photo_quality(cut: np.ndarray, hands) -> tuple[float, float]:
+    """(half width in pixels, straightness) of the can in one cut-out."""
+    alpha = cut[..., 3] > 127
+    can = alpha & ~_hands_mask(hands, *alpha.shape[::-1])
+    xc, half, top, bottom = _can_frame(can)
+    return half, _straightness(can, top, bottom, half)
+
+
 def wrap_can(cutouts: list, hands: list | None = None, size=(2048, 1024)) -> tuple[bytes, float, float]:
     """A solid can from cut-out photos (RGBA uint8 arrays) taken a quarter turn apart, the same
     way round each time. Returns the GLB (height 1, standing on y = 0, axis at x = z = 0), its
@@ -383,9 +404,28 @@ def wrap_can(cutouts: list, hands: list | None = None, size=(2048, 1024)) -> tup
     from scipy import ndimage
     W, Ht = size
     hands = (list(hands or []) + [[]] * len(cutouts))[:len(cutouts)]
+    # A cut-out with more than the can in it (the person right behind it, kept by SAM 2) is wider
+    # and its edges wander: its proportions are not used, and its label counts far less.
+    quality = []
+    for k, c in enumerate(cutouts):
+        try:
+            quality.append(_photo_quality(c, hands[k]))
+        except ValueError:                        # no can shape at all: this photo is left out
+            quality.append((np.inf, 1.0))
+    usable = [k for k, (h, _) in enumerate(quality) if np.isfinite(h)]
+    if not usable:
+        raise ValueError("no can shape in any photo")
+    straight = [quality[k][0] for k in usable if quality[k][1] < 0.08]
+    narrowest = min(straight) if straight else min(quality[k][0] for k in usable)
+    good = {k: quality[k][1] < 0.08 and quality[k][0] <= 1.2 * narrowest for k in usable}
+    if not any(good.values()):
+        good = {k: quality[k][0] <= 1.2 * narrowest for k in usable}
     best = None
     for turn in ((90.0, -90.0) if len(cutouts) > 1 else (90.0,)):
-        views = [_unroll(c, hands[k], FACE_CAMERA + k * turn, W, Ht) for k, c in enumerate(cutouts)]
+        views = []
+        for k in usable:
+            c, w, a = _unroll(cutouts[k], hands[k], FACE_CAMERA + k * turn, W, Ht)
+            views.append((c, w * (1.0 if good[k] else 0.1), a))
         # How well neighbours agree where both see the surface: the wrong way round, they do not.
         cost = 0.0
         for k in range(len(views)):
@@ -411,7 +451,7 @@ def wrap_can(cutouts: list, hands: list | None = None, size=(2048, 1024)) -> tup
         image[:] = base
     png = io.BytesIO()
     Image.fromarray((np.clip(image, 0, 1) * 255).round().astype(np.uint8)).save(png, "PNG", optimize=True)
-    aspect = float(np.median([a for _, _, a in views]))
+    aspect = float(np.median([a for (_, _, a), k in zip(views, usable) if good[k]]))
     if not 0.15 < aspect < 1.2:                   # not a can's proportions: a photo was misread
         raise ValueError(f"width / height {aspect:.2f} is not a can's")
 

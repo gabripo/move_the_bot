@@ -53,6 +53,12 @@
             <label><input type="radio" name="scan-mode" value="sides" id="scan-mode-sides" checked /> 4 sides <small>a quarter turn between photos</small></label>
             <label><input type="radio" name="scan-mode" value="video" id="scan-mode-video" /> Video <small>one slow turn, about 8 s</small></label>
           </fieldset>
+          <fieldset class="scan-modes" id="scan-how-box" hidden>
+            <legend>Made with</legend>
+            <label><input type="radio" name="scan-how" value="auto" id="scan-how-auto" checked /> Auto <small>cans wrapped, the rest Idol</small></label>
+            <label><input type="radio" name="scan-how" value="idol" id="scan-how-idol" /> Idol <small>image → 3D, any shape · minutes</small></label>
+            <label><input type="radio" name="scan-how" value="wrap" id="scan-how-wrap" /> Wrapped <small>photos around a cylinder · seconds</small></label>
+          </fieldset>
           <div class="scan-buttons"><button id="scan-go" type="submit">📷 Start</button><button id="scan-cancel" type="button">Cancel</button></div>
           <p id="scan-status" role="status"></p>
           <div id="scan-list-box" hidden><h3>Your scans <small>✕ forgets one</small></h3><ul id="scan-list"></ul></div>
@@ -182,7 +188,7 @@
       <dt>Drinks <small>the language model</small></dt>
       <dd>“I'm thirsty!” <small>→ the mug</small> · “I'm still thirsty!” / “I need a real drink!” <small>→ the scanned Monster</small></dd>
       <dt>Scanner</dt>
-      <dd>“scan a monster drink, 17 cm” · “next” · “cancel” · “delete the monster scan”</dd>
+      <dd>“scan a monster drink, 17 cm” · “scan the mug with Idol” · “… wrapped” · “next” · “cancel” · “delete the monster scan”</dd>
     </dl>
     <h3>Scene <small>what S creates · ✕ removes · <button type="button" id="rec-scene-reset">reset</button></small></h3>
     <ul id="rec-scene"></ul>
