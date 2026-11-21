@@ -3,8 +3,9 @@
 # Uses the official ROCm container of Ollama, run by Podman as a system service.
 # Written for Bazzite (Fedora Atomic); works on other Linux systems with Podman and systemd.
 #
-#   ./ollama-server.sh install            set everything up, start now and at every boot
-#   ./ollama-server.sh install --no-boot  the same, but start only when you ask
+#   ./ollama-server.sh install            set everything up and start it now; it does not start
+#                                         at boot (AI is off by default; ai-switch.sh)
+#   ./ollama-server.sh install --boot     the same, and start it at every boot
 #
 # After install the script is available as `ollama-server`:
 #   ollama-server start | stop | restart  run or stop the server now
@@ -89,8 +90,8 @@ cmd_model() {
 }
 
 cmd_install() {
-  local boot=on
-  [ "${1:-}" = "--no-boot" ] && boot=off
+  local boot=off                              # AI is off by default; --boot to start at boot
+  [ "${1:-}" = "--boot" ] && boot=on
   command -v podman >/dev/null || { echo "Podman is needed (Bazzite and Fedora have it)."; exit 1; }
   [ -e /dev/kfd ] || echo "Warning: /dev/kfd is missing; ROCm may not see the GPU (Vulkan: see the end of this script's output)."
   need_sudo

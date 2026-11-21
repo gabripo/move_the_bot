@@ -18,6 +18,45 @@ const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+// A MediaPipe hand tracker for one hand in a video: from this server when it has the files
+// (docker/web fetches them at build time), else from the CDN. GPU when the browser allows it.
+let visionModule = null;
+export async function loadHandLandmarker({ numHands = 1 } = {}) {
+  visionModule ||= import(`${LOCAL}/vision_bundle.mjs`);
+  const vision = await visionModule;
+  const local = await fetch(`${LOCAL}/hand_landmarker.task`, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
+  const options = (model, delegate) => ({
+    baseOptions: { modelAssetPath: model, delegate },
+    runningMode: "VIDEO", numHands,
+    minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.6,
+  });
+  const model = local ? `${LOCAL}/hand_landmarker.task` : CDN_MODEL;
+  let files;
+  try {
+    files = await vision.FilesetResolver.forVisionTasks(`${LOCAL}/wasm`);
+  } catch {
+    files = await vision.FilesetResolver.forVisionTasks(CDN_WASM);
+  }
+  try {
+    return await vision.HandLandmarker.createFromOptions(files, options(model, "GPU"));
+  } catch {
+    return await vision.HandLandmarker.createFromOptions(files, options(model, "CPU"));
+  }
+}
+
+// A thumbs-up: the four fingers folded, the thumb pointing up above everything else.
+export function isThumbsUp(lm) {
+  if (!lm) return false;
+  const d = (a, b) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y);
+  const palm = d(0, 9);                                  // wrist to middle knuckle: the hand's size
+  if (!(palm > 0.03)) return false;
+  // A folded finger's tip is no further from the wrist than its middle joint.
+  const folded = [[8, 6], [12, 10], [16, 14], [20, 18]].every(([tip, joint]) => d(tip, 0) < 1.05 * d(joint, 0));
+  const thumbUp = lm[4].y < lm[3].y && lm[3].y < lm[2].y && lm[2].y - lm[4].y > 0.45 * palm;
+  const highest = [5, 6, 8, 9, 12, 13, 16, 17, 20].every((i) => lm[4].y < lm[i].y - 0.15 * palm);
+  return folded && thumbUp && highest;
+}
+
 // Turns 21 hand landmarks (image coordinates 0..1, not mirrored) into a gripper target.
 export class HandMapper {
   constructor() { this.reset(); }
@@ -93,32 +132,10 @@ export class HandControl {
     this.mapper.reset();
     if (!this.landmarker) {
       this.onStatus("Loading hand tracking…");
-      this.landmarker = await this._load();
+      this.landmarker = await loadHandLandmarker();
     }
     this.onStatus("Show one hand to the camera");
     this._loop();
-  }
-
-  async _load() {
-    const vision = await import(`${LOCAL}/vision_bundle.mjs`);
-    const local = await fetch(`${LOCAL}/hand_landmarker.task`, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
-    const options = (model, delegate) => ({
-      baseOptions: { modelAssetPath: model, delegate },
-      runningMode: "VIDEO", numHands: 1,
-      minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.6,
-    });
-    const model = local ? `${LOCAL}/hand_landmarker.task` : CDN_MODEL;
-    let files;
-    try {
-      files = await vision.FilesetResolver.forVisionTasks(`${LOCAL}/wasm`);
-    } catch {
-      files = await vision.FilesetResolver.forVisionTasks(CDN_WASM);
-    }
-    try {
-      return await vision.HandLandmarker.createFromOptions(files, options(model, "GPU"));
-    } catch {
-      return await vision.HandLandmarker.createFromOptions(files, options(model, "CPU"));
-    }
   }
 
   stop() {
@@ -200,5 +217,21 @@ export function fakeHand({ x = 0.5, y = 0.5, size = 0.18, pinch = false } = {}) 
     }
   }
   lm[1] = { x: x + 0.35 * size, y: y + 0.3 * size, z: 0 };
+  return lm;
+}
+
+// A synthetic thumbs-up (a fist seen from the side, thumb up), for tests.
+export function fakeThumbsUp({ x = 0.5, y = 0.55, size = 0.18 } = {}) {
+  const at = (dx, dy) => ({ x: x + dx * size, y: y + dy * size, z: 0 });
+  const lm = Array.from({ length: 21 }, () => at(0, 0));
+  lm[0] = at(0, 0.6);                                                   // wrist, below the fist
+  lm[1] = at(-0.15, 0.35); lm[2] = at(-0.25, 0.05); lm[3] = at(-0.3, -0.35); lm[4] = at(-0.3, -0.75);
+  // Each finger: knuckle, middle joint (furthest out), then curled back towards the palm.
+  [[5, -0.1], [9, 0.05], [13, 0.2], [17, 0.35]].forEach(([base, dy]) => {
+    lm[base] = at(0, dy - 0.4);
+    lm[base + 1] = at(0.45, dy - 0.4);
+    lm[base + 2] = at(0.45, dy - 0.15);
+    lm[base + 3] = at(0.25, dy - 0.1);
+  });
   return lm;
 }

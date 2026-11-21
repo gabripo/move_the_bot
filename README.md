@@ -26,7 +26,7 @@ Everything runs on your own computer in Docker, including the language model.
 | **Use your hand** | Your webcam tracks one hand: the gripper follows it, a pinch grabs |
 | **Mix them** | Steer by hand and say "create an apple here" |
 | **Ask freely** | "I'm thirsty", "tidy up": a language model plans the steps |
-| **Bring your own object** | One photo of your mug becomes its 3D model, made by [Idol](https://speridlabs.com/research/idol): see [your own objects](docs/your-own-objects.md) |
+| **Bring your own object** | Show it to the webcam (`./run.sh --scan`): one photo, four sides or a short video of one turn, started by a button, a thumbs-up or "scan my mug". [Idol](https://speridlabs.com/research/idol) turns it into a 3D object on the table. See [your own objects](docs/your-own-objects.md) |
 
 | Objects from one sentence | Pick and place, planned by MoveIt |
 |---|---|
@@ -109,7 +109,9 @@ flowchart LR
 5. **ros2_control** executes the trajectory. What sits below it is a plugin: a simulated arm,
    Isaac Sim, or the real servos.
 
-More detail: [docs/architecture.md](docs/architecture.md).
+More detail: [docs/architecture.md](docs/architecture.md). The technologies behind each feature
+(voice, motion planning, obstacle avoidance, hand control, 3D generation) and how a Mac and a
+gaming PC share the work: [docs/overview.md](docs/overview.md).
 
 ## From simulation to a real robot
 
@@ -129,6 +131,7 @@ stack (Isaac Sim, Isaac ROS cuMotion, NIM, GR00T, Jetson) is in
 
 | | |
 |---|---|
+| [Overview](docs/overview.md) | the project in one page: the technologies, feature by feature, and what runs on the Mac and on the gaming PC |
 | [Architecture](docs/architecture.md) | the parts, the ROS topics, what happens when you give a command |
 | [Skills](docs/skills.md) | the robot's vocabulary, how to call it from your own code, how to add a skill or an object |
 | [Real hardware](docs/real-hardware.md) | Isaac Sim and the real SO-101, step by step |
@@ -166,6 +169,8 @@ docs/                 documentation and the generated pictures
 - SO-101 arm design and meshes: [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) (Apache-2.0)
 - [MoveIt 2](https://moveit.ai), [ros2_control](https://control.ros.org), [three.js](https://threejs.org),
   [urdf-loader](https://github.com/gkjohnson/urdf-loaders), [MediaPipe](https://developers.google.com/mediapipe), [Ollama](https://ollama.com)
+- [Idol](https://speridlabs.com/research/idol) (Sperid Labs), [SAM 2](https://github.com/facebookresearch/sam2) (Meta),
+  [Qwen2.5](https://github.com/QwenLM/Qwen2.5), [Whisper](https://github.com/openai/whisper) (OpenAI)
 
 Built through agentic coding: the ideas and direction are mine; the code was written with AI coding agents.
 

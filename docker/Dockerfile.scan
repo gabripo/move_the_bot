@@ -1,0 +1,14 @@
+# The optional object scanner (docker/scan_server.py): webcam photo -> 3D object, with Idol.
+# Enabled with ./run.sh --scan. This image talks to Idol's public demo, to a scan server on a
+# GPU PC (IDOL_BACKEND=remote) or to a fixed splat (file); it has no PyTorch of its own.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart numpy scipy pillow requests gradio_client==2.7.2
+
+WORKDIR /app
+# The same code as the robot and the photo script, so names, sizes and models match.
+COPY docker/scan_server.py scripts/photo_to_3d.py scripts/solid_mug.py /app/
+COPY ros/move_the_bot/move_the_bot/models3d.py ros/move_the_bot/move_the_bot/world.py /app/
+
+EXPOSE 8000
+CMD ["uvicorn", "scan_server:app", "--host", "0.0.0.0", "--port", "8000"]

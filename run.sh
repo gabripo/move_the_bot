@@ -16,6 +16,7 @@ Options
   --nim           use NVIDIA NIM in the cloud as language model (needs NVIDIA_API_KEY in .env)
   --no-llm        no language model at all: only the built-in rules understand commands
   --voice         also start local speech-to-text (Whisper); without it the browser's own is used
+  --scan          also start the object scanner: show an object to the webcam, get it in 3D (Idol)
   --real [PORT]   drive a real SO-101 on USB (default port /dev/ttyACM0)
   --isaac         drive the arm simulated in NVIDIA Isaac Sim
   --rebuild       rebuild the images
@@ -33,7 +34,7 @@ llm="container"
 if [ -n "${OLLAMA_URL:-}" ]; then llm="remote"; fi
 
 case "${1:-}" in
-  stop) "${compose[@]}" --profile ollama --profile voice down; exit 0 ;;
+  stop) "${compose[@]}" --profile ollama --profile voice --profile scan down; exit 0 ;;
   logs) "${compose[@]}" logs -f robot; exit 0 ;;
   -h|--help|help) usage; exit 0 ;;
 esac
@@ -46,6 +47,7 @@ while [ $# -gt 0 ]; do
     --nim) llm="nim" ;;
     --no-llm) llm="none" ;;
     --voice) profiles+=(--profile voice) ;;
+    --scan) profiles+=(--profile scan) ;;
     --real) export HARDWARE=real
             if [ $# -gt 1 ] && [ "${2#--}" = "$2" ]; then export USB_PORT="$2"; shift; fi ;;
     --isaac) export HARDWARE=isaac ;;

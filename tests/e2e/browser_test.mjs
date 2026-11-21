@@ -1,7 +1,7 @@
 // Browser end-to-end test: the real page, talking to the real ROS stack through rosbridge.
 //   cd tests/e2e && npm install && npx playwright install chromium && node browser_test.mjs
 import assert from "node:assert/strict";
-import { holdHand, moveHand, object, openApp, sayAndWait, sleep } from "./lib.mjs";
+import { BASE_URL, holdHand, moveHand, object, openApp, sayAndWait, sleep } from "./lib.mjs";
 
 const { browser, page, problems } = await openApp();
 const check = async (name, fn) => {
@@ -97,12 +97,101 @@ await check("hand control: the gripper follows the hand, a pinch grabs", async (
 if (process.env.CHECK_HAND_TRACKING === "1") {
   await check("the hand-tracking model loads in the browser (MediaPipe)", async () => {
     const loaded = await page.evaluate(async () => {
-      const landmarker = await window.mtb.hand._load();
+      const { loadHandLandmarker } = await import("./js/hand.js");
+      const landmarker = await loadHandLandmarker();
       return typeof landmarker.detectForVideo === "function";
     });
     assert.ok(loaded);
   });
 }
+
+// The optional object scanner (./run.sh --scan). In CI it runs with IDOL_BACKEND=file, so the
+// browser's fake camera, the upload, the conversion and "create a <name>" are all real.
+if (process.env.CHECK_SCAN === "1") {
+  await check("scan: four sides, started by saying “scan a stapler, 8 cm”, become an object", async () => {
+    await page.waitForSelector("#btn-scan:not([hidden])", { timeout: 10000 });
+    await page.fill("#command", "scan a stapler, 8 cm");
+    await page.press("#command", "Enter");
+    await page.waitForFunction(() => !document.getElementById("scan-panel").hidden);
+    assert.equal(await page.inputValue("#scan-name"), "stapler");
+    assert.equal(await page.inputValue("#scan-height"), "8");
+    assert.ok(await page.isChecked("#scan-mode-sides"), "four sides by default with a GPU-less test backend");
+    await page.waitForFunction(() => window.mtb.scanner.state === "capturing", null, { timeout: 10000 });
+    // Space takes each photo without waiting for the countdown.
+    for (let k = 1; k <= 4; k++) {
+      await page.waitForFunction((k) => document.querySelectorAll("#scan-thumbs img").length === k - 1, k);
+      await page.keyboard.press(" ");
+      await page.waitForFunction((k) => document.querySelectorAll("#scan-thumbs img").length >= k, k, { timeout: 5000 });
+    }
+    await page.waitForFunction(() => window.mtb.objects.some((o) => o.name === "stapler"), null, { timeout: 120000 });
+    const stapler = await object(page, "stapler");
+    assert.match(stapler.model, /^\/models\/cache\/stapler_.*\.glb$/);
+    assert.ok(Math.abs(stapler.size[2] - 0.08) < 0.001, `height ${stapler.size[2]}`);
+    assert.ok(await page.evaluate(() => document.getElementById("scan-panel").hidden), "the panel closes");
+  });
+  await sayAndWait(page, "clear the table");
+
+  await check("scan: a thumbs-up to the camera starts it; one photo", async () => {
+    await page.click("#btn-scan");
+    await page.waitForFunction(() => document.getElementById("scan-cam").videoWidth > 0, null, { timeout: 10000 });
+    await page.fill("#scan-name", "Teapot");
+    await page.check("#scan-mode-photo");
+    await page.evaluate(() => document.activeElement.blur());
+    // What the hand tracker would report for a thumbs-up held 0.7 s (its own clock: the page is slow here).
+    await page.evaluate(async () => {
+      const { fakeThumbsUp } = await import("./js/hand.js");
+      const start = performance.now();
+      for (let t = 0; t <= 7; t++) window.mtb.scanner.seeHand(fakeThumbsUp(), start + 100 * t);
+    });
+    await page.waitForFunction(() => window.mtb.objects.some((o) => o.name === "teapot"), null, { timeout: 60000 })
+      .catch(async () => {
+        const why = await page.evaluate(() => [window.mtb.scanner.state, document.getElementById("scan-status").textContent,
+          window.mtb.objects.map((o) => o.name).join(",")].join(" | "));
+        throw new Error(`no teapot: ${why}`);
+      });
+  });
+  await sayAndWait(page, "clear the table");
+
+  await check("scan: in recording mode Space first asks for the name, Enter takes the photos", async () => {
+    const rec = await browser.newPage({ viewport: { width: 1600, height: 820 } });
+    await rec.goto(`${BASE_URL}?rec`);
+    await rec.waitForFunction(() => window.mtb && window.mtb.ready(), null, { timeout: 120000 });
+    await rec.waitForSelector("#btn-scan:not([hidden])", { timeout: 10000 });
+    await rec.evaluate(() => document.activeElement?.blur());
+    await rec.keyboard.press(" ");
+    await rec.waitForFunction(() => document.activeElement?.id === "scan-name", null, { timeout: 10000 });
+    await sleep(1500);
+    assert.equal(await rec.evaluate(() => window.mtb.scanner.state), "ready", "no photos before the name");
+    await rec.keyboard.type("monster drink");
+    assert.equal(await rec.inputValue("#scan-name"), "monster drink", "typing replaces the last name");
+    await rec.press("#scan-name", "Enter");
+    await rec.waitForFunction(() => window.mtb.scanner.state === "capturing", null, { timeout: 10000 });
+    await rec.evaluate(() => window.mtb.scanner.close());
+    await rec.close();
+  });
+}
+
+await check("recording mode: a 16:9 demo area, the keys and script beside it", async () => {
+  const rec = await browser.newPage({ viewport: { width: 1600, height: 820 } });
+  await rec.goto(`${BASE_URL}?rec`);
+  await rec.waitForFunction(() => window.mtb && window.mtb.ready(), null, { timeout: 120000 });
+  const box = await rec.evaluate(() => {
+    const app = document.getElementById("app").getBoundingClientRect();
+    const cues = document.getElementById("rec-cues").getBoundingClientRect();
+    return { ratio: app.width / app.height, appRight: app.right, cuesLeft: cues.left, cuesWidth: cues.width,
+      keys: document.querySelectorAll("#rec-keys button").length, script: document.querySelectorAll("#rec-script li").length };
+  });
+  assert.ok(Math.abs(box.ratio - 16 / 9) < 0.01, `demo area is ${box.ratio.toFixed(3)}, not 16:9`);
+  assert.ok(box.cuesWidth > 200 && box.cuesLeft >= box.appRight - 1, JSON.stringify(box));   // outside what is recorded
+  assert.ok(box.keys >= 8 && box.script >= 5, JSON.stringify(box));
+  // A clicked line is ticked, R unticks it. Clicked directly: the column may still be growing
+  // (the list of scans arrives a moment later), which keeps a pointer click waiting.
+  await rec.$eval("#rec-script li", (li) => li.click());
+  assert.equal(await rec.locator("#rec-script li.done").count(), 1);
+  await rec.keyboard.press("r");
+  assert.equal(await rec.locator("#rec-script li.done").count(), 0);
+  await rec.close();
+});
 
 await check("no JavaScript errors on the page", async () => {
   const real = problems.filter((p) => !/favicon|GPU stall|ReadPixels/.test(p));

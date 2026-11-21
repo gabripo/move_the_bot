@@ -12,13 +12,14 @@ Whatever it answers is validated before the robot moves.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 
 import requests
 
 from .skills import PLACE_HELP, SKILLS, validate
-from .world import CATALOGUE, COLORS, World
+from .world import CATALOGUE, COLORS, POSITIONS, World
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b-instruct-q4_K_M")
@@ -31,6 +32,37 @@ MAX_SKILLS = 12
 
 # Older configurations pointed OLLAMA_URL at the /api/generate endpoint.
 OLLAMA_URL = re.sub(r"/api/(generate|chat)$", "", OLLAMA_URL)
+
+
+# Words that make an object something to drink ("monster drink", "coke can", "mug").
+DRINK_WORDS = ("drink", "monster", "red bull", "energy", "can", "soda", "cola", "coke", "pepsi", "sprite",
+               "fanta", "beer", "juice", "water", "lemonade", "bottle", "mug", "cup", "glass", "coffee",
+               "tea", "milk")
+
+
+def is_drink(name: str) -> bool:
+    words = " " + " ".join(re.sub(r"\d+", " ", name.lower()).split()) + " "
+    return any(f" {w} " in words or f" {w}s " in words for w in DRINK_WORDS)
+
+
+BROUGHT = 0.07     # metres from the front of the table: a drink there was brought to the user
+
+
+def drinks(world: World, scanned=()) -> list:
+    """What to bring someone thirsty, best first: the drinks on the table (the user's own scanned
+    ones first), then scanned drinks to create; last, the drinks already brought to the front
+    ("I'm still thirsty" means another one). [(name, note)]."""
+    scanned = [" ".join(k.lower().split()) for k in scanned]
+    fx, fy = POSITIONS["front"]
+    on_table = [o for o in world.objects.values() if (is_drink(o.name) or is_drink(o.kind)) and not o.held]
+    brought = [o for o in on_table if math.hypot(o.x - fx, o.y - fy) < BROUGHT]
+    waiting = [o for o in on_table if o not in brought]
+    best = [(o.name, "scanned, on the table") for o in waiting if o.kind in scanned]
+    best += [(o.name, "on the table") for o in waiting if o.kind not in scanned]
+    best += [(k, "scanned, create it") for k in scanned
+             if is_drink(k) and not any(o.kind == k for o in on_table)]
+    best += [(o.name, "already brought to the user") for o in brought]
+    return best
 
 
 class LLMError(Exception):
@@ -55,7 +87,14 @@ def system_prompt() -> str:
         "- To move an object: first {\"skill\":\"pick\",\"object\":...}, then {\"skill\":\"place\",\"at\":...}.\n"
         "- The gripper holds one object at a time.\n"
         "- Only pick objects that are on the table (listed below) or that you create first.\n"
-        "- If the request is not something the arm can do, return an empty skills list and explain in \"say\".\n\n"
+        "- If the request is not something the arm can do, return an empty skills list and explain in \"say\".\n"
+        "- If the user is thirsty or wants a drink, bring the FIRST drink of the \"Drinks\" line: pick it and "
+        "place it at the front (towards the user); if it is not on the table yet, create it at the front. "
+        "Without a Drinks line, create a bottle.\n"
+        "- \"Still thirsty\", \"another drink\": a different drink from the one already brought: the first drink "
+        "of the line that is not \"already brought\". If there is none, create a bottle.\n"
+        "- \"A real drink\", \"a proper drink\", \"something better\": the user's own drink, the first \"scanned\" one "
+        "of the line (pick it, or create it if it says so), even if another drink comes before it.\n\n"
         "EXAMPLES\n"
         "User: tidy up, put everything on the left\n"
         "(table: apple, cube)\n"
@@ -67,13 +106,21 @@ def system_prompt() -> str:
         "{\"skills\":[{\"skill\":\"pick\",\"object\":\"red cube\"},{\"skill\":\"place\",\"at\":{\"object\":\"blue cube\",\"relation\":\"on\"}}],"
         "\"say\":\"Stacking the red cube on the blue cube.\"}\n"
         "User: I'm thirsty\n"
+        "(table: mug, apple. Drinks, best first: mug (on the table); monster drink (scanned, create it))\n"
+        "{\"skills\":[{\"skill\":\"pick\",\"object\":\"mug\"},{\"skill\":\"place\",\"at\":{\"position\":\"front\"}}],"
+        "\"say\":\"Here is your mug.\"}\n"
+        "User: I'm still thirsty!\n"
+        "(table: mug, monster drink. Drinks, best first: monster drink (scanned, on the table); mug (already brought to the user))\n"
+        "{\"skills\":[{\"skill\":\"pick\",\"object\":\"monster drink\"},{\"skill\":\"place\",\"at\":{\"position\":\"front\"}}],"
+        "\"say\":\"Here is your monster drink.\"}\n"
+        "User: I'm thirsty\n"
         "(table: empty)\n"
         "{\"skills\":[{\"skill\":\"spawn\",\"object\":\"bottle\",\"at\":{\"position\":\"center\"}}],"
         "\"say\":\"Here is a bottle.\"}\n"
     )
 
 
-def user_prompt(text: str, world: World, hand=None) -> str:
+def user_prompt(text: str, world: World, hand=None, scanned=()) -> str:
     if world.objects:
         table = "; ".join(
             f"{o.name} at x={o.x:.2f} y={o.y:.2f}" + (" (in the gripper)" if o.held else "")
@@ -81,6 +128,11 @@ def user_prompt(text: str, world: World, hand=None) -> str:
     else:
         table = "empty"
     lines = [f"Table: {table}"]
+    if scanned:
+        lines.append("Scanned with the webcam (the user's own objects; you can create them too): " + ", ".join(scanned))
+    best = drinks(world, scanned)
+    if best:
+        lines.append("Drinks, best first: " + "; ".join(f"{name} ({note})" for name, note in best))
     if hand is not None:
         lines.append(f"The user's hand points at x={hand[0]:.2f} y={hand[1]:.2f}")
     lines.append(f"User: {text}")
@@ -175,13 +227,55 @@ def chat(messages: list) -> str:
         raise LLMError(f"model error: {e}") from None
 
 
-def ask(text: str, world: World, hand=None) -> tuple:
+def ask(text: str, world: World, hand=None, scanned=()) -> tuple:
     """Ask the model for skills. Returns (skills, say, problems). Raises LLMError."""
     answer = chat([
         {"role": "system", "content": system_prompt()},
-        {"role": "user", "content": user_prompt(text, world, hand)},
+        {"role": "user", "content": user_prompt(text, world, hand, scanned)},
     ])
-    return interpret(answer)
+    skills, say, problems = interpret(answer)
+    return create_missing(skills, world, scanned), say, problems
+
+
+def _overlaps(a: str, b: str) -> bool:
+    """'monster drink' and 'monster', 'red bull can' and 'red bull': one name inside the other."""
+    a, b = f" {a} ", f" {b} "
+    return a != b and (a in b or b in a)
+
+
+def create_missing(skills: list, world: World, scanned=()) -> list:
+    """Models like to pick a scanned object that is not on the table yet ("bring me my monster
+    drink"): such a pick, and the place after it, become creating it where it was to go. A name
+    a little off ("monster drink" for the scanned "monster") becomes the real one first."""
+    scanned = [" ".join(k.lower().split()) for k in scanned]
+    known = set(scanned) | set(CATALOGUE)
+    there = set()                       # created earlier in this plan
+    out, i = [], 0
+    while i < len(skills):
+        s = skills[i]
+        name = str(s.get("object", "")).lower()
+        if name and s.get("skill") in ("pick", "spawn", "remove") and name not in known and world.find(name) is None:
+            # "monster drink" for the scanned "monster" (or the other way round): the real name
+            near = [o.name for o in world.objects.values() if _overlaps(name, o.name)] + \
+                   [k for k in scanned if _overlaps(name, k)]
+            if near:
+                name = near[0]
+                s = {**s, "object": name}
+        if s.get("skill") == "pick" and name in known and name not in there and world.find(name) is None:
+            follows = skills[i + 1] if i + 1 < len(skills) else None
+            if follows and follows.get("skill") == "place":
+                out.append({"skill": "spawn", "object": name, **({"at": follows["at"]} if follows.get("at") else {})})
+                i += 2
+            else:
+                out += [{"skill": "spawn", "object": name}, s]
+                i += 1
+            there.add(name)
+            continue
+        if s.get("skill") == "spawn" and name:
+            there.add(name)
+        out.append(s)
+        i += 1
+    return out
 
 
 def warm_up() -> str | None:

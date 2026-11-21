@@ -12,6 +12,7 @@ which are sent to the skill server one at a time, waiting for each to finish.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import time
@@ -24,7 +25,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import Bool, String
 
-from . import language, llm
+from . import language, llm, models3d
 from .skills import describe
 from .world import World
 
@@ -144,6 +145,9 @@ class Agent(Node):
         return world
 
     def _understand(self, text: str) -> list | None:
+        # Objects scanned with the webcam (the optional scanner) are words the rules must know.
+        scanned = models3d.scanned_kinds(os.environ.get("MODELS_DIR", "/models"))
+        language.set_extra_kinds(scanned)
         world = self._world()
         if not self.llm_only:
             skills = language.parse(text, world)
@@ -153,7 +157,7 @@ class Agent(Node):
         self._log("info", f"Asking the language model ({llm.model_name()})…")
         started = time.monotonic()
         try:
-            skills, say, problems = llm.ask(text, world, self.hand)
+            skills, say, problems = llm.ask(text, world, self.hand, scanned)
         except llm.LLMError as e:
             self._log("error", f"I did not understand that, and the language model did not help: {e}.")
             return None

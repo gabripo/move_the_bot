@@ -35,6 +35,50 @@
       </div>
       <p id="view-hint">Drag to look around · scroll to zoom</p>
 
+      <!-- The object scanner (optional, ./run.sh --scan). See scan.js. -->
+      <div id="scan-panel" hidden>
+        <div class="scan-view">
+          <video id="scan-cam" autoplay playsinline muted></video><div class="scan-frame"></div>
+          <div id="scan-overlay"></div><div id="scan-flash"></div>
+          <div id="scan-bar"><div id="scan-progress"></div></div>
+          <div id="scan-thumbs"></div>
+        </div>
+        <form id="scan-form" autocomplete="off">
+          <h2>Scan an object</h2>
+          <label>What is it? <input id="scan-name" type="text" placeholder="e.g. stapler" maxlength="30" /></label>
+          <label>How tall? <span><input id="scan-height" type="number" min="2" max="30" step="0.5" value="10" /> cm</span></label>
+          <fieldset class="scan-modes">
+            <legend>The camera takes</legend>
+            <label><input type="radio" name="scan-mode" value="photo" id="scan-mode-photo" /> 1 photo <small>fastest · Idol guesses the back</small></label>
+            <label><input type="radio" name="scan-mode" value="sides" id="scan-mode-sides" checked /> 4 sides <small>a quarter turn between photos</small></label>
+            <label><input type="radio" name="scan-mode" value="video" id="scan-mode-video" /> Video <small>one slow turn, about 8 s</small></label>
+          </fieldset>
+          <fieldset class="scan-modes" id="scan-how-box" hidden>
+            <legend>Made with</legend>
+            <label><input type="radio" name="scan-how" value="auto" id="scan-how-auto" checked /> Auto <small>cans wrapped, the rest Idol</small></label>
+            <label><input type="radio" name="scan-how" value="idol" id="scan-how-idol" /> Idol <small>image → 3D, any shape · minutes</small></label>
+            <label><input type="radio" name="scan-how" value="wrap" id="scan-how-wrap" /> Wrapped <small>photos around a cylinder · seconds</small></label>
+          </fieldset>
+          <div class="scan-buttons"><button id="scan-go" type="submit">📷 Start</button><button id="scan-cancel" type="button">Cancel</button></div>
+          <p id="scan-status" role="status"></p>
+          <div id="scan-list-box" hidden><h3>Your scans <small>✕ forgets one</small></h3><ul id="scan-list"></ul></div>
+          <p class="scan-note">Also starts with Space, a 👍 to the camera, or saying “scan my mug”. The photos become 3D with <a href="https://speridlabs.com/research/idol" target="_blank" rel="noopener">Idol</a>.</p>
+        </form>
+      </div>
+
+      <!-- While Idol builds the model: back to the 3D view, with what it is doing and where. scan.js -->
+      <div id="idol-card" hidden role="status" aria-live="polite">
+        <div class="idol-head">
+          <div class="idol-orb" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="idol-what"><b id="idol-title">Idol is building it in 3D</b><span id="idol-where"></span></div>
+          <span id="idol-time">0:00</span>
+        </div>
+        <div id="idol-photos"></div>
+        <ol id="idol-steps"></ol>
+        <div id="idol-bar"><div></div></div>
+        <p id="idol-note"></p>
+      </div>
+
       <!-- Recording mode (?rec): what is happening, readable with the sound off. See recording.js. -->
       <div id="rec" hidden>
         <div id="rec-hook"><strong id="rec-hook-1"></strong><span id="rec-hook-2"></span></div>
@@ -100,6 +144,7 @@
         <button id="btn-home" type="button">Home</button>
         <button id="btn-clear" type="button">Clear table</button>
         <button id="btn-stop" type="button" class="danger">Stop</button>
+        <button id="btn-scan" type="button" hidden>📷 Scan</button>
       </div>
 
       <h2>Conversation</h2>
@@ -118,6 +163,41 @@
       </details>
     </aside>
   </main>
+
+  <!-- Recording mode: the keys and the script beside the recorded area, never in the video. -->
+  <aside id="rec-cues" hidden aria-label="Recording keys and script">
+    <div id="tape-state" class="idle"><i></i><b>Not recording</b><span>V starts · Chrome asks which tab: this one, with its audio · your microphone is recorded too</span></div>
+    <h3>Keys</h3>
+    <div id="rec-keys">
+      <button type="button" data-key="v"><kbd>V</kbd><span>Start / stop the video</span></button>
+      <button type="button" data-key="p"><kbd>P</kbd><span>Pause / resume the video</span></button>
+      <button type="button" data-key="s"><kbd>S</kbd><span>Set the scene</span></button>
+      <button type="button" data-key="r"><kbd>R</kbd><span>Ready: opening title</span></button>
+      <button type="button" data-key="m"><kbd>M</kbd><span>Speak (mic on / off)</span></button>
+      <button type="button" data-key="h"><kbd>H</kbd><span>Hand control on / off</span></button>
+      <button type="button" data-key="e"><kbd>E</kbd><span>End card</span></button>
+      <button type="button" data-key="escape"><kbd>Esc</kbd><span>Stop the arm</span></button>
+      <div class="key-note"><kbd>Space</kbd> or a 👍 held ½ s: open the scanner, type the name, then Enter or 👍 · during photos: the next one · <kbd>/</kbd> type a command</div>
+    </div>
+    <h3>Say <small>M, then speak · or type after /</small></h3>
+    <dl id="rec-say">
+      <dt>Objects</dt>
+      <dd>“create an apple and a red cube” · “create a ball here” <small>(point)</small> · “remove the apple” · “clear the table”</dd>
+      <dt>Moving</dt>
+      <dd>“put the apple on the cube” · “move the cube to the left” · “pick up the mug” · “go home” · “stop”</dd>
+      <dt>Drinks <small>the language model</small></dt>
+      <dd>“I'm thirsty!” <small>→ the mug</small> · “I'm still thirsty!” / “I need a real drink!” <small>→ the scanned Monster</small></dd>
+      <dt>Scanner</dt>
+      <dd>“scan a monster drink, 17 cm” · “scan the mug with Idol” · “… wrapped” · “next” · “cancel” · “delete the monster scan”</dd>
+    </dl>
+    <h3>Scene <small>what S creates · ✕ removes · <button type="button" id="rec-scene-reset">reset</button></small></h3>
+    <ul id="rec-scene"></ul>
+    <form id="rec-scene-add" autocomplete="off"><input id="rec-scene-new" type="text" maxlength="80" placeholder="add: a teapot on the left" /></form>
+    <div id="rec-scans-box" hidden><h3>Scans <small>✕ forgets one</small></h3><ul id="rec-scans"></ul></div>
+    <h3>Script <small>click a line when done · R clears</small></h3>
+    <ol id="rec-script"></ol>
+    <p class="cue-note">This column is not in the video.</p>
+  </aside>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

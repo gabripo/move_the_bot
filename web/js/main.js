@@ -1,5 +1,6 @@
 import { HandControl, fakeHand } from "./hand.js";
 import { Recording } from "./recording.js";
+import { Scanner } from "./scan.js";
 import { Ros } from "./ros.js";
 import { Speech } from "./speech.js";
 import { Viewer } from "./viewer.js";
@@ -11,6 +12,7 @@ const wsUrl = params.get("ws")
 
 const ros = new Ros(wsUrl);
 let rec = null;                 // recording mode (?rec), set up at the end
+let scanner = null;             // the object scanner, set up at the end
 const viewer = new Viewer($("viewer"));
 // Handles for automated tests and for recording demos without a camera (filled in below).
 window.mtb = { ros, viewer, objects: [], state: {}, agent: {} };
@@ -45,9 +47,11 @@ function send(text) {
 
 $("command-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  rec?.source($("command").value, "text");
-  send($("command").value);
+  const text = $("command").value;
   $("command").value = "";
+  if (scanner?.command(text)) { $("command").blur(); return; }   // "scan my mug", "next": for the scanner (Space then works too)
+  rec?.source(text, "text");
+  send(text);
 });
 $("examples").addEventListener("click", (event) => {
   if (event.target.tagName === "BUTTON") send(event.target.textContent);
@@ -145,7 +149,11 @@ ros.subscribe("/skill/status", "std_msgs/String", (msg) => {
 // ------------------------------------------------------------------ voice
 
 const speech = new Speech({
-  onText: (text) => { rec?.source(text, "voice"); send(text); },
+  onText: (text) => {
+    if (scanner?.command(text)) return;
+    rec?.source(text, "voice");
+    send(text);
+  },
   onState: (state) => {
     $("mic").setAttribute("aria-pressed", state === "listening" ? "true" : "false");
     $("mic").classList.toggle("busy", state === "transcribing");
@@ -217,9 +225,20 @@ Object.assign(window.mtb, {
   feedHand: (options) => hand.feed(options ? fakeHand(options) : null),
 });
 
+// The object scanner: its button only appears when the scan service runs (./run.sh --scan).
+scanner = new Scanner({
+  send: (text) => { rec?.source(text, "scan"); send(text); },
+  onEvent: (state, info) => rec?.scan(state, info),
+  quickStart: () => !!rec && !teleopOn,       // recording mode: Space / 👍 open the scanner, which asks for the name
+  pcName: params.get("llmpc") || "my gaming PC",
+});
+window.mtb.scanner = scanner;
+
 if (params.has("rec")) {
   rec = new Recording({ ros, viewer, params, actions: {
     send, stop: () => send("stop"),
     toggleHand: () => $("hand-toggle").click(), toggleMic: () => $("mic").click(),
+    scans: () => scanner.scans(), forget: (name) => scanner.forget(name),
   } });
+  scanner.watchIdle($("rec-cam"));            // a 👍 to the webcam bubble starts a scan
 }

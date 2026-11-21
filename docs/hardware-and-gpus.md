@@ -43,8 +43,8 @@ downloads the model and checks that it runs on the GPU:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/gabripo/move_the_bot/master/docker/ollama-server/ollama-server.sh
-bash ollama-server.sh install              # starts now and at every boot
-bash ollama-server.sh install --no-boot    # or: starts only when you ask
+bash ollama-server.sh install              # starts now, not at boot (AI is off by default)
+bash ollama-server.sh install --boot       # or: also starts at every boot
 ```
 
 It prints the addresses other computers can use. Afterwards:
@@ -60,6 +60,13 @@ It prints the addresses other computers can use. Afterwards:
 The model also frees the GPU's memory by itself 10 minutes after the last request. If `status`
 shows the model on the CPU instead of the GPU, try the Vulkan back-end:
 `OLLAMA_IMAGE=docker.io/ollama/ollama:latest ollama-server install`.
+
+The same PC can also turn webcam photos into 3D objects ([idol-server.sh](your-own-objects.md#a-scan-server-on-your-gpu-pc)).
+`ai-switch off` stops both servers and keeps them off after a reboot, so nothing uses the GPU's
+compute (ROCm) while you play; `ai-switch on` brings them back, and the **AI** tray icon of Desktop
+Mode switches them with a click. By default they also stop
+whenever Steam's Gaming Mode starts and come back in Desktop Mode
+([how to install it](your-own-objects.md#switching-all-ai-off-on-the-gpu-pc)).
 
 **On the computer that runs move_the_bot**, with the address from `hostname -I`:
 

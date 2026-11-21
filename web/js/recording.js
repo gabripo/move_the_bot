@@ -3,21 +3,42 @@
 // the system that is working (the browser, the ROS 2 "brain", the language model on another
 // computer, the arm); the webcam shows the person in a round bubble.
 //
-// Keys (when the command box is not focused):
+// Keys (when the command box is not focused), also listed, clickable, in a column beside the
+// recorded area, with the script of the demo as a checklist; that column is never recorded:
+//   V  start / stop the video (Chrome records this tab, cropped to the demo; saved to Downloads)
+//   P  pause / resume the video
 //   S  set the scene: clear the table and create the objects for the demo (not captioned)
-//   R  ready for a take: clear captions and show the opening title
+//   R  ready for a take: clear captions, show the opening title, untick the script
 //   E  show or hide the closing card          H  hand control on/off
 //   M  speak a command                         Esc  stop the arm
+//   /  type a command
 //
 // URL options: hook=…&hook2=… (opening title), setup=… (objects for S, ";" between commands),
-// desk=0 (plain table instead of a desk), llmpc=… (where the language model runs).
+// desk=0 (plain table instead of a desk), llmpc=… (where the language model runs),
+// script=… (the script in the cue column, ";" between lines).
+//
+// The cue column also edits the scene that S creates (add an object, ✕ to remove one; kept in
+// this browser, "reset" goes back to the default or setup=…) and lists the scanned objects, with a
+// ✕ to forget a scan that went wrong.
 
 import { openCamera } from "./camera.js";
+import { Tape } from "./tape.js";
 
 const $ = (id) => document.getElementById(id);
 const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
-const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️" };
+const SCRIPT = [
+  "R · opening title, 2 s",
+  "M · “I'm thirsty!”: the LLM brings the mug",
+  "type “put the apple on the cube” (rules)",
+  "H · steer with the hand, pinch to grab · H",
+  "“create a ball here”",
+  "👍 or Space · type “monster drink”, 17 cm · Enter or 👍",
+  "4 sides, a quarter turn each: cut out and wrapped in seconds",
+  "M · “I'm still thirsty!” or “I need a real drink!”: the Monster",
+  "E · end card, 3 s · V stops the video",
+];
+const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️", scan: "📷" };
 
 export class Recording {
   constructor({ ros, viewer, params, actions }) {
@@ -30,9 +51,10 @@ export class Recording {
     this.settle = null;
     this.hookTimer = null;
     this.llmPc = params.get("llmpc") || "my gaming PC";
-    this.setup = (params.get("setup")
-      || "clear the table;create a mug on the right;create a red cube in front;create an apple on the left")
-      .split(";").map((s) => s.trim()).filter(Boolean);
+    this.defaultScene = (params.get("setup")
+      || "create a mug on the right;create a red cube in front;create an apple on the left")
+      .split(";").map((s) => s.trim()).filter((s) => s && s !== "clear the table");
+    this.scene = this._loadScene() || [...this.defaultScene];
 
     document.body.classList.add("rec");
     $("rec").hidden = false;
@@ -66,7 +88,58 @@ export class Recording {
       } catch { /* ignore */ }
     }, { latched: true });
     window.addEventListener("keydown", (e) => this._key(e));
+    this._cues(params);
     this.ready();
+  }
+
+  // The column beside the recorded area: the video's state, the keys (clickable) and the script.
+  _cues(params) {
+    $("rec-cues").hidden = false;
+    for (const button of $("rec-keys").querySelectorAll("button")) {
+      button.addEventListener("mousedown", (e) => e.preventDefault());   // keep the focus where it was (Space scans)
+      button.addEventListener("click", () => this._do(button.dataset.key));
+    }
+    this._sceneUi();
+    this._scansUi();
+    const lines = params.get("script") ? params.get("script").split(";").map((l) => l.trim()).filter(Boolean) : SCRIPT;
+    for (const line of lines) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      li.addEventListener("click", () => li.classList.toggle("done"));
+      $("rec-script").appendChild(li);
+    }
+    const show = (cls, title, note) => {
+      $("tape-state").className = cls;
+      $("tape-state").querySelector("b").textContent = title;
+      $("tape-state").querySelector("span").textContent = note;
+    };
+    const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    const crop = () => (this.tape.cropped ? "only the demo area" : "the whole tab: the cues are in it");
+    let timer = null;
+    this.tape = new Tape({
+      element: $("app"),
+      onState: (state, info) => {
+        clearInterval(timer);
+        if (state === "recording") {
+          const bars = (v) => "▁▂▃▄▅▆▇█".slice(0, Math.max(1, Math.round(v * 8)));
+          const tick = () => show("recording", `REC ${clock(this.tape.seconds)}`,
+            `${this.tape.meter ? `🎤 ${bars(this.tape.level)}` : `🔇 ${this.tape.sound}`} · P pauses · V stops and saves · ${crop()}`);
+          tick();
+          timer = setInterval(tick, 150);
+        } else if (state === "paused") {
+          show("paused", `Paused ${clock(this.tape.seconds)}`, "P resumes · V stops and saves");
+        } else if (state === "starting") {
+          show("starting", "Starting…", "Chrome asks which tab: this one, “Also share tab audio” on, then Share; allow the microphone");
+        } else if (state === "saved") {
+          show("saved", `Saved · ${clock(info.seconds)}`, `${info.name} in Downloads (${info.megabytes.toFixed(1)} MB, ${info.sound}) · `
+            + "for iMovie: ./record-demo.sh imovie · V records again");
+        } else if (state === "error") {
+          show("error", "Could not record", `${info.message} · use ⌘⇧5 instead`);
+        } else {
+          show("idle", "Not recording", "V starts · Chrome asks which tab: this one, with its audio · your microphone is recorded too");
+        }
+      },
+    });
   }
 
   // The page tells us how a command was given, before sending it.
@@ -87,12 +160,108 @@ export class Recording {
     }
   }
 
+  // The object scanner (scan.js): the webcam takes the photos, then Idol turns them into 3D.
+  // When Idol runs on the GPU PC, that PC's box shows its progress, photo by photo.
+  scan(state, info) {
+    if (state === "forgot") return;                 // between takes: nothing to caption
+    if (state === "forget-failed") { this._sub(info.message, "error"); return; }
+    const photos = (n) => (n > 1 ? `${n} photos` : "one photo");
+    const IDOL = info.wrap || info.how === "wrapped" ? "SAM 2 · photos → can" : "Idol · photos → 3D";
+    if (state === "capture") {
+      this._hideHook(1500);
+      const how = info.mode === "video" ? "a short video, one slow turn" : info.shots > 1 ? "4 sides, a quarter turn each" : "one photo";
+      this._caption(`📷 Scanning “${info.name}”`, `The webcam takes ${how}`);
+      const now = info.mode === "video" ? `🎥 one turn${info.shot ? ` · side ${info.shot} of 4` : ""}`
+        : info.shots > 1 ? `📷 photo ${info.shot} of ${info.shots}` : "📷 a photo";
+      this._flow({ you: ["on", now] });
+    } else if (state === "start") {
+      this.scanSub = "";
+      const gpu = ["remote", "local"].includes(info.backend);
+      this._flow({ you: ["done", `📷 ${photos(info.views)}`], llm: gpu ? ["on", "receiving the photos…", IDOL] : ["skip", "not needed"] });
+      this._sub(info.wrap ? `SAM 2 cuts the can out of ${photos(info.views)} on ${this.llmPc}'s GPU; they are wrapped around a cylinder…`
+        : gpu ? `Idol, an open image-to-3D model, turns ${photos(info.views)} into 3D on ${this.llmPc}'s GPU…`
+          : `Idol turns ${photos(info.views)} into 3D…`, gpu ? "llm" : "");
+    } else if (state === "progress") {
+      if (!info.onGpu) return;
+      const what = info.step === "idol" && info.views > 1 ? `photo ${info.view} of ${info.views}` : info.text.toLowerCase();
+      this._flow({ llm: ["on", `${what} · ${Math.round(info.seconds || 0)} s`, IDOL] }, true);
+    } else if (state === "done") {
+      this.scanSub = info.how === "wrapped"
+        ? `${photos(info.views)} wrapped around a cylinder in ${info.seconds} s, cut out by SAM 2${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
+        : `3D from ${photos(info.views)} in ${info.seconds} s, made by Idol${info.onGpu ? ` on ${this.llmPc}'s GPU` : ""}`
+          + (info.solid ? ", made solid" : ` (${(info.points || 0).toLocaleString()} points)`);
+      this._sub(this.scanSub, info.onGpu ? "llm" : "");
+      this._flow({ you: ["done", "📷 scanned"], ...(info.onGpu ? { llm: ["done", `${photos(info.views)} → 3D in ${Math.round(info.seconds)} s`, IDOL] } : {}) }, true);
+    } else {
+      this._sub(info.message, "error");
+      this._flow({ you: ["done", "📷 scan failed"] });
+    }
+  }
+
   ready() {
     this._caption("", "");
     this._flow({});
     $("rec-end").hidden = true;
     clearTimeout(this.hookTimer);
     $("rec-hook").classList.remove("hide");
+  }
+
+  // ------------------------------------------------------------------ scene and scans
+
+  _loadScene() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mtb.rec.scene"));
+      return Array.isArray(saved) ? saved.filter((s) => typeof s === "string") : null;
+    } catch { return null; }
+  }
+
+  _sceneUi() {
+    const save = () => { try { localStorage.setItem("mtb.rec.scene", JSON.stringify(this.scene)); } catch { /* private mode */ } };
+    const draw = () => {
+      $("rec-scene").replaceChildren(...this.scene.map((command, i) => {
+        const li = document.createElement("li");
+        const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: `Remove “${command}”` });
+        x.addEventListener("mousedown", (e) => e.preventDefault());
+        x.addEventListener("click", () => { this.scene.splice(i, 1); save(); draw(); });
+        li.append(command.replace(/^create\s+(an?\s+|the\s+|some\s+)?/i, ""), x);
+        li.title = `S says: “${command}”`;
+        return li;
+      }));
+    };
+    $("rec-scene-add").addEventListener("submit", (e) => {
+      e.preventDefault();
+      let text = $("rec-scene-new").value.trim().replace(/[.!]+$/, "");
+      if (!text) return;
+      if (!/^(create|add|put|place|make)\b/i.test(text)) text = `create ${/^(an?|the|some)\s/i.test(text) ? "" : "a "}${text}`;
+      this.scene.push(text.replace(/^(add|put|place|make)\b/i, "create"));
+      $("rec-scene-new").value = "";
+      $("rec-scene-new").blur();
+      save();
+      draw();
+    });
+    $("rec-scene-reset").addEventListener("click", () => {
+      this.scene = [...this.defaultScene];
+      try { localStorage.removeItem("mtb.rec.scene"); } catch { /* private mode */ }
+      draw();
+    });
+    draw();
+  }
+
+  async _scansUi() {
+    const draw = async () => {
+      const scans = await this.actions.scans();
+      $("rec-scans").replaceChildren(...scans.map((s) => {
+        const li = document.createElement("li");
+        const x = Object.assign(document.createElement("button"), { type: "button", textContent: "✕", title: `Forget the scan of ${s.name}` });
+        x.addEventListener("mousedown", (e) => e.preventDefault());
+        x.addEventListener("click", () => this.actions.forget(s.name));
+        li.append(s.name, x);
+        return li;
+      }));
+      $("rec-scans-box").hidden = !scans.length;
+    };
+    window.addEventListener("mtb-scans", draw);
+    draw();
   }
 
   // ------------------------------------------------------------------ events
@@ -108,6 +277,11 @@ export class Recording {
       if (this.teleop && how === "voice") how = "voice+hand";
       this.sources.delete(key);
       this._hideHook(2500);
+      if (how === "scan") {           // the scanner places what it made: keep its result in view
+        this._caption(`${ICONS.scan} “${text}”`, this.scanSub || "");
+        this._flow({ you: ["done", "📷 scanned"] }, true);
+        return;
+      }
       this._caption(`${ICONS[how] || ""} “${text}”`, "");
       this._flow({ you: ["done", { voice: "🎤 voice", text: "⌨️ typed", "voice+hand": "🎤 voice + ✋ pointing", click: "🖱️ button" }[how] || "typed"] });
       return;
@@ -149,18 +323,28 @@ export class Recording {
   }
 
   _key(e) {
-    if (e.key === "Escape") { this.actions.stop(); return; }
-    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
-    const key = e.key.toLowerCase();
-    if (key === "s") {
-      this.setup.forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
+    if (e.key === "Escape") { this._do("escape"); return; }
+    if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (this._do(e.key.toLowerCase())) e.preventDefault();
+  }
+
+  // A key, pressed or clicked in the cue column. Returns whether it was one of ours.
+  _do(key) {
+    if (key === "escape") this.actions.stop();
+    else if (key === "v") this.tape.toggle();
+    else if (key === "p") this.tape.pause();
+    else if (key === "s") {
+      ["clear the table", ...this.scene].forEach((command) => { this.quiet.add(norm(command)); this.actions.send(command); });
       this.ready();
-    } else if (key === "r") this.ready();
-    else if (key === "e") { $("rec-end").hidden = !$("rec-end").hidden; this._hideHook(0); }
+    } else if (key === "r") {
+      this.ready();
+      for (const li of $("rec-script").children) li.classList.remove("done");
+    } else if (key === "e") { $("rec-end").hidden = !$("rec-end").hidden; this._hideHook(0); }
     else if (key === "h") this.actions.toggleHand();
     else if (key === "m") this.actions.toggleMic();
-    else return;
-    e.preventDefault();
+    else if (key === "/") $("command").focus();
+    else return false;
+    return true;
   }
 
   // ------------------------------------------------------------------ drawing
@@ -199,7 +383,8 @@ export class Recording {
     $("rec-caption-sub").className = kind;
   }
 
-  // nodes: {you|brain|llm|arm: [state, text]}; others go back to rest unless `keep`.
+  // nodes: {you|brain|llm|arm: [state, text, title?]}; others go back to rest unless `keep`.
+  // The GPU PC's box is the language model's, or Idol's while a scan runs there (its title).
   _flow(nodes, keep = false) {
     const rest = { you: "voice · text · hand", brain: "rules · inverse kinematics · MoveIt 2",
       llm: this.llmRest, arm: "simulated" };
@@ -209,9 +394,11 @@ export class Recording {
       if (nodes[name]) {
         el.className = `node ${name} ${nodes[name][0]}`.trim();
         span.textContent = nodes[name][1];
+        if (name === "llm") el.querySelector("b").textContent = nodes.llm[2] || "Open LLM, at home";
       } else if (!keep) {
         el.className = `node ${name}`;
         span.textContent = rest[name];
+        if (name === "llm") el.querySelector("b").textContent = "Open LLM, at home";
       }
     }
   }
