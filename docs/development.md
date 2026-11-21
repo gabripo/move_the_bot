@@ -89,8 +89,14 @@ open -na "Google Chrome" --args --app="http://localhost:8080/?rec" --window-size
 
 The demo area (3D view, captions, diagram, command bar) is 16:9; a column on its right lists the
 keys and the script of the demo, and is never in the video. **V** starts recording: Chrome asks
-which tab to share, choose this one. **P** pauses and resumes, **V** again stops and saves an MP4
-of the demo area only to Downloads. The other keys: **S** sets the scene, **R** shows the opening
+which tab to share, choose this one and keep "Also share tab audio" on; allow the microphone too.
+**P** pauses and resumes, **V** again stops and saves an MP4 of the demo area only to Downloads:
+H.264 video and AAC sound (your microphone mixed with the tab's sound), the codecs iMovie edits.
+While recording, the column shows the microphone's level (🎤 ▁▃▅), so a silent take shows at
+once. Chrome records a variable frame rate, on which an editor's sound can drift from the
+picture over a long take: `./record-demo.sh imovie` turns the newest recording in Downloads (or
+the files named) into a `.mov` next to it, at a constant 30 fps, H.264 (the Mac's hardware
+encoder) and AAC 48 kHz, ready to import into iMovie. It needs ffmpeg (`brew install ffmpeg`). The other keys: **S** sets the scene, **R** shows the opening
 title (and unticks the script), **M** speaks, **H** hand control, **E** the end card, **Esc** stops
 the arm, **/** types a command, **Space** or a thumbs-up to the webcam (held half a second)
 opens the scanner, which first asks what the object is: type its name over the last one (and its

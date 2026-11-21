@@ -121,19 +121,22 @@ export class Recording {
       onState: (state, info) => {
         clearInterval(timer);
         if (state === "recording") {
-          const tick = () => show("recording", `REC ${clock(this.tape.seconds)}`, `P pauses · V stops and saves · ${crop()}`);
+          const bars = (v) => "▁▂▃▄▅▆▇█".slice(0, Math.max(1, Math.round(v * 8)));
+          const tick = () => show("recording", `REC ${clock(this.tape.seconds)}`,
+            `${this.tape.meter ? `🎤 ${bars(this.tape.level)}` : `🔇 ${this.tape.sound}`} · P pauses · V stops and saves · ${crop()}`);
           tick();
-          timer = setInterval(tick, 250);
+          timer = setInterval(tick, 150);
         } else if (state === "paused") {
           show("paused", `Paused ${clock(this.tape.seconds)}`, "P resumes · V stops and saves");
         } else if (state === "starting") {
-          show("starting", "Starting…", "Chrome asks which tab: choose this one, then Share");
+          show("starting", "Starting…", "Chrome asks which tab: this one, “Also share tab audio” on, then Share; allow the microphone");
         } else if (state === "saved") {
-          show("saved", `Saved · ${clock(info.seconds)}`, `${info.name} in Downloads (${info.megabytes.toFixed(1)} MB) · V records again`);
+          show("saved", `Saved · ${clock(info.seconds)}`, `${info.name} in Downloads (${info.megabytes.toFixed(1)} MB, ${info.sound}) · `
+            + "for iMovie: ./record-demo.sh imovie · V records again");
         } else if (state === "error") {
           show("error", "Could not record", `${info.message} · use ⌘⇧5 instead`);
         } else {
-          show("idle", "Not recording", "V starts · Chrome asks which tab: this one");
+          show("idle", "Not recording", "V starts · Chrome asks which tab: this one, with its audio · your microphone is recorded too");
         }
       },
     });
