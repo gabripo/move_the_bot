@@ -6,6 +6,9 @@ grey when both are off.
   left-click   all AI on or off, right now (the boot settings stay as they are)
   right-click  each service on its own, what runs, and the settings: by default nothing AI starts
              with the PC (`ai-switch default`), and Gaming Mode switches it off
+Drawn with Qt (PySide6/PyQt) when Python has it, else with GTK's AppIndicator, as the LG TV tray
+does: Bazzite's Python does not always ship PySide6. With GTK a click opens the menu, whose first
+line switches all AI on or off.
 No password: the polkit rule from `ai-switch install` lets this user start and stop these two
 services. Switching off while a scan is being made asks first. Installed by `ai-switch install`,
 started with Desktop Mode (~/.config/autostart), or by hand with `ai-switch tray`.
@@ -110,11 +113,117 @@ def _single_instance():
     return lock
 
 
+ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect x="4" y="4" width="56" height="56" rx="14" fill="{fill}"/>
+<text x="32" y="42" font-family="Sans" font-weight="bold" font-size="26" fill="white" text-anchor="middle">AI</text>
+</svg>"""
+
+
+def icon_files() -> Path:
+    """ai-switch-on.svg and ai-switch-off.svg in a folder of their own, for GTK's tray."""
+    folder = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "ai-switch" / "icons"
+    folder.mkdir(parents=True, exist_ok=True)
+    for name, fill in (("on", "#2fb36d"), ("off", "#6c7086")):
+        (folder / f"ai-switch-{name}.svg").write_text(ICON_SVG.format(fill=fill))
+    return folder
+
+
+def run_gtk_tray() -> int:
+    """The same tray with GTK's AppIndicator (a click opens the menu)."""
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        try:
+            gi.require_version("AyatanaAppIndicator3", "0.1")
+            from gi.repository import AyatanaAppIndicator3 as appindicator
+        except (ValueError, ImportError):
+            gi.require_version("AppIndicator3", "0.1")
+            from gi.repository import AppIndicator3 as appindicator
+        from gi.repository import GLib, Gtk
+    except (ImportError, ValueError) as e:
+        print(f"ai-switch tray: needs PySide6/PyQt or GTK's AppIndicator ({e}).", file=sys.stderr)
+        return 1
+    indicator = appindicator.Indicator.new("ai-switch", "ai-switch-off", appindicator.IndicatorCategory.SYSTEM_SERVICES)
+    indicator.set_icon_theme_path(str(icon_files()))
+    indicator.set_title("AI switch")
+    indicator.set_status(appindicator.IndicatorStatus.ACTIVE)
+    last = {"key": None}
+
+    def notify(text, warn=False):
+        subprocess.Popen(["notify-send", "-a", "AI switch", "-i", "dialog-warning" if warn else "dialog-information",
+                          "AI switch", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def confirm_stop(services) -> bool:
+        busy = scanning()
+        if not busy or "idol" not in services:
+            return True
+        dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.YES_NO,
+                                   text=f"{busy}. Switching Idol off stops this scan. Switch off anyway?")
+        dialog.set_title("AI switch")
+        yes = dialog.run() == Gtk.ResponseType.YES
+        dialog.destroy()
+        return yes
+
+    def set_services(services, on):
+        if not on and not confirm_stop(services):
+            return
+        errors = [e for s in services if (e := switch(s, on))]
+        if errors:
+            notify("\n".join(errors) + "\nRun `ai-switch install` once to allow this without a password.", warn=True)
+        else:
+            notify(f"AI is {'on' if on else 'off'} for now." if len(services) > 1
+                   else f"{SERVICES[services[0]]}: {'started' if on else 'stopped'}.")
+        GLib.timeout_add(800, lambda: (refresh(force=True), False)[1])
+
+    def toggle_all(*_):
+        state = states()
+        if state:
+            set_services(list(state) if not any_on(state) else [s for s, on in state.items() if on], not any_on(state))
+
+    def item(label, action=None):
+        it = Gtk.MenuItem(label=label)
+        if action:
+            it.connect("activate", action)
+        else:
+            it.set_sensitive(False)
+        return it
+
+    def build_menu(state, busy):
+        menu = Gtk.Menu()
+        menu.append(item("Switch all AI off now" if any_on(state) else "Switch all AI on now", toggle_all))
+        menu.append(item(f"AI: {'ON' if any_on(state) else 'OFF'}" + (f" · {busy}" if busy else "")))
+        menu.append(Gtk.SeparatorMenuItem())
+        for s, on in state.items():
+            check = Gtk.CheckMenuItem(label=SERVICES[s])
+            check.set_active(on)
+            check.connect("toggled", lambda w, s=s: set_services([s], w.get_active()))
+            menu.append(check)
+        menu.append(Gtk.SeparatorMenuItem())
+        menu.append(item("Starts with the PC: " + ("yes" if starts_with_pc() else "no") + "  (ai-switch default on|off)"))
+        menu.append(item("In Gaming Mode: " + ("AI off" if gaming_default() == "off" else "no change") + "  (ai-switch gaming-mode)"))
+        menu.append(item("Quit tray", lambda *_: Gtk.main_quit()))
+        menu.show_all()
+        return menu
+
+    def refresh(force=False):
+        state, busy = states(), scanning()
+        key = (tuple(state.items()), busy)
+        if force or key != last["key"]:          # a new menu only when something changed
+            last["key"] = key
+            indicator.set_icon_full(f"ai-switch-{'on' if any_on(state) else 'off'}", tooltip(state, busy))
+            indicator.set_menu(build_menu(state, busy))
+        return True
+
+    refresh(force=True)
+    GLib.timeout_add_seconds(3, refresh)          # notices changes made elsewhere (terminal, Gaming Mode)
+    Gtk.main()
+    return 0
+
+
 def run_tray() -> int:
     qt = _import_qt()
     if qt is None:
-        print("ai-switch tray: needs PySide6 or PyQt (Bazzite has PySide6).", file=sys.stderr)
-        return 1
+        return run_gtk_tray()
     QtWidgets, QtGui, QtCore = qt
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
