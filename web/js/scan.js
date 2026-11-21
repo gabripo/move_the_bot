@@ -50,6 +50,10 @@ export class Scanner {
     $("btn-scan").addEventListener("click", () => this.open());
     $("scan-cancel").addEventListener("click", () => this.close());
     $("scan-form").addEventListener("submit", (e) => { e.preventDefault(); this.trigger(); });
+    try { const how = localStorage.getItem("mtb.scan.how"); if (how) $(`scan-how-${how}`).checked = true; } catch { /* none */ }
+    for (const input of document.querySelectorAll("input[name=scan-how]")) {
+      input.addEventListener("change", () => { this.how = input.value; });
+    }
     window.addEventListener("keydown", (e) => {
       if (e.key !== " ") return;
       // In the name box a tap types a space ("red mug"); holding Space starts the scan instead of
@@ -75,6 +79,20 @@ export class Scanner {
 
   get mode() { return document.querySelector("input[name=scan-mode]:checked")?.value || "photo"; }
 
+  // How the photos become 3D: "auto" (cans wrapped, the rest Idol), "idol" or "wrap". Remembered.
+  get how() { return document.querySelector("input[name=scan-how]:checked")?.value || "auto"; }
+  set how(value) {
+    const input = $(`scan-how-${value}`);
+    if (input) input.checked = true;
+    try { localStorage.setItem("mtb.scan.how", value); } catch { /* private mode */ }
+  }
+
+  // Whether this scan is wrapped around a cylinder rather than made by Idol (needs SAM 2 on a GPU).
+  willWrap(name) {
+    if (!this.health?.wrap_words?.length) return false;
+    return this.how === "wrap" || (this.how === "auto" && this.wraps(name));
+  }
+
   // On the GPU PC (or this machine's GPU), not Idol's public demo or a test file.
   get onGpu() { return ["remote", "local"].includes(this.health?.backend); }
 
@@ -98,6 +116,7 @@ export class Scanner {
     const first = !this.health;
     this.health = health;
     $("btn-scan").title = `Turn an object you show to the webcam into a 3D object (Idol, ${health.where})`;
+    $("scan-how-box").hidden = !health.wrap_words?.length;            // wrapping needs SAM 2 on a GPU
     if (first) this._changed();
     // Idol's public demo takes one photo (its free quota is small): no several-photo modes.
     const many = health.backend !== "demo";
@@ -224,6 +243,9 @@ export class Scanner {
     const m = t.match(/^(?:please\s+)?(?:scan|digiti[sz]e|virtuali[sz]e)(?:\s+(.*))?$/);
     if (!m || $("btn-scan").hidden) return false;
     let what = (m[1] || "").replace(/^(this|my|the|a|an)\s+/, "");
+    // "… with Idol" / "… wrapped": how to make it, for this scan and the next ones
+    const how = what.match(/,?\s*(?:(?:with|using|by|through)\s+idol|(?:wrapped|wrap it|on a cylinder|around a cylinder))\s*$/);
+    if (how) { this.how = /idol/.test(how[0]) ? "idol" : "wrap"; what = what.slice(0, how.index); }
     const cm = what.match(/,?\s*(\d+(?:\.\d+)?)\s*(?:cm|centimet(?:er|re)s?)\s*(?:tall|high)?$/);
     if (cm) what = what.slice(0, cm.index);
     this.open({ name: what.trim(), height: cm ? parseFloat(cm[1]) : null, start: !!what.trim(), askName: !what.trim() });
@@ -426,7 +448,7 @@ export class Scanner {
     const height = parseFloat($("scan-height").value) || 10;
     const n = canvases.length;
     const where = this.onGpu ? "on the GPU" : `(${this.health?.where || "Idol"})`;
-    const wrap = this.wraps(name);
+    const wrap = this.willWrap(name);
     this._status(wrap ? `${n > 1 ? `${n} photos` : "Photo"} taken. SAM 2 cuts the can out ${where}, then it is wrapped around a cylinder…`
       : n > 1 ? `${n} photos taken. Idol is turning them into 3D ${where}…` : `Photo taken. Idol is turning it into 3D ${where}…`, "busy");
     this.onEvent("start", { name, views: n, backend: this.health?.backend, gpu: this.health?.gpu, wrap });
@@ -438,6 +460,7 @@ export class Scanner {
     form.append("name", name);
     form.append("height_cm", String(height));
     form.append("hands", JSON.stringify(canvases.map((c) => c.hands || [])));
+    form.append("how", this.how);
     const poll = setInterval(() => this._poll(), 1000);
     try {
       const r = await fetch("./scan/scan", { method: "POST", body: form });
@@ -488,7 +511,7 @@ export class Scanner {
     $("scan-panel").hidden = true;
     const n = canvases.length, remote = this.health?.backend === "remote";
     const gpu = this.health?.gpu ? ` · ${this.health.gpu}` : "";
-    const wrap = this.wraps(name);
+    const wrap = this.willWrap(name);
     $("idol-title").textContent = wrap ? `Wrapping “${name}” from your photos` : `Idol is building “${name}” in 3D`;
     $("idol-where").textContent = remote ? `on ${this.pcName}'s GPU${gpu}`
       : this.health?.backend === "local" ? `on this computer's GPU${gpu}` : (this.health?.where || "");

@@ -153,3 +153,24 @@ def test_hands_are_erased_where_they_are():
     assert mask[75, 20] and not mask[20, 80]
     assert scan_server._parse_hands("not json", 2) == [[], []]
     assert scan_server._parse_hands('[[[[0.5, 0.5]]]]', 3) == [[[[0.5, 0.5]]], [], []]
+
+
+def test_for_a_can_the_upright_rectangle_wins_over_the_person_behind():
+    import scan_server
+    can = np.zeros((100, 100), bool); can[20:90, 40:60] = True
+    yy, xx = np.mgrid[:100, :100]
+    person = can | ((xx - 50) ** 2 / 22 ** 2 + (yy - 35) ** 2 / 28 ** 2 < 1) | ((yy > 70) & (np.abs(xx - 50) < 48))
+    found = [(0.95, person.mean(), person), (0.9, can.mean(), can), (0.6, 0.01, can & (np.arange(100) < 50)[:, None])]
+    assert scan_server.can_like(found)[2] is can
+    assert scan_server.can_like([(0.95, person.mean(), person)]) is None
+
+
+def test_the_user_chooses_idol_or_wrapping(scanner, monkeypatch):
+    client, seen, _ = scanner
+    import scan_server
+    from test_solid_mug import can_photos
+    monkeypatch.setattr(scan_server, "cutouts", lambda photos, hands: can_photos(90.0, n=len(photos), hand=False))
+    r = client.post("/scan", data={"name": "monster", "height_cm": "17", "how": "idol"}, files=photos(1))
+    assert r.json()["how"] == "idol" and len(seen) == 1                 # a can, made by Idol as asked
+    r = client.post("/scan", data={"name": "tube of paint", "height_cm": "12", "how": "wrap"}, files=photos(2))
+    assert r.json()["how"] == "wrapped" and len(seen) == 1              # not a can's name, wrapped as asked

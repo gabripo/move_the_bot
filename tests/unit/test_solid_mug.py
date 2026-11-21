@@ -129,3 +129,15 @@ def test_a_squat_wide_shape_is_not_taken_for_a_can():
     wide = [np.pad(np.full((60, 300, 4), 200, np.uint8), ((170, 170), (50, 50), (0, 0))) for _ in range(2)]
     with pytest.raises(ValueError):
         solid_mug.wrap_can(wide, size=(180, 90))
+
+
+def test_a_person_kept_behind_the_can_does_not_widen_it():
+    photos = can_photos(90.0, hand=False)
+    for k in (0, 3):                                     # SAM 2 kept the head and shoulders
+        img = photos[k]
+        behind = img[..., 3] == 0
+        yy, xx = np.mgrid[:400, :400]
+        person = ((xx - 200) ** 2 / 90 ** 2 + (yy - 150) ** 2 / 110 ** 2 < 1) | ((yy > 260) & (np.abs(xx - 200) < 170))
+        img[behind & person] = [90, 90, 90, 255]
+    glb, aspect, turn = solid_mug.wrap_can(photos, size=(360, 180))
+    assert abs(aspect - 104 / 260) < 0.04, aspect

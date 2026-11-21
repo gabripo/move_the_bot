@@ -269,7 +269,16 @@ can": `solid_mug.CAN_WORDS`) goes another way, when SAM 2 is there (`IDOL_BACKEN
    head-on counts more. Both ways of turning are tried, and the one whose overlaps agree wins.
 
 The label comes out as sharp as the photos, and the scan takes seconds rather than minutes.
-`WRAP=0` sends cans to Idol like anything else; mugs (a handle) always go to Idol.
+
+SAM 2 may keep the person right behind the can as well ("the largest thing in the middle"): for
+a can it is asked for the upright rectangle among its answers instead, and on the Mac a cut-out
+whose edges still wander, or that is wider than the others, gives neither the proportions nor
+much of the label.
+
+**Made with** in the scan panel chooses: *Auto* (cans wrapped, the rest Idol), *Idol* (any
+shape, minutes) or *Wrapped* (any upright cylinder, seconds). Saying "scan the mug with Idol" or
+"scan a candle, wrapped" chooses too, and the choice is remembered. `WRAP=0` sends everything to
+Idol.
 
 ### Testing the scanner
 

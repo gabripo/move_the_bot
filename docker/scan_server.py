@@ -24,9 +24,10 @@ Endpoints (image: one or more photos; gaussians, optional: the detail per photo,
   GET  /health                                     which backend, where it runs, which GPU
   GET  /progress                                   the scan running now: step, photo k of n, seconds,
                                                    and small pictures of what Idol was shown (cutouts)
-  POST /scan   image, name, height_cm, gaussians   the model in the cache -> {name, model, size, ...}
+  POST /scan   image, name, height_cm, gaussians,  the model in the cache -> {name, model, size, ...}
+               how (auto | idol | wrap)
   POST /splat  image, gaussians                    only the (fused) splat, .ply: what a remote server answers
-  POST /cutout image                               only the cut-outs (SAM 2), PNGs in JSON: for cans (below)
+  POST /cutout image, shape                        only the cut-outs (SAM 2), PNGs in JSON: for cans (below)
   GET  /scans                                      the objects scanned so far -> [{name, model, size, made}]
   DELETE /scans/{name}                             forget one: 'create a <name>' draws it as before the scan
 
@@ -38,7 +39,7 @@ from the cut-out.
 Cans and other drinks (solid_mug.is_can_name) are not given to Idol: a can is a cylinder, so its
 photos, cut out by SAM 2, are wrapped around one (solid_mug.wrap_can). That keeps the real label,
 sharp, and takes seconds. Idol makes everything else (and a can when there is no SAM 2 to ask).
-WRAP=0 sends cans to Idol too.
+how="idol" / "wrap" (the scanner's "Made with") chooses for one scan; WRAP=0 sends everything to Idol.
 """
 from __future__ import annotations
 
@@ -145,9 +146,10 @@ class Cutter:
         self.device = device
         self.remover = background_remover           # Idol's BiRefNet, when there is one
 
-    def __call__(self, image, hands=None):
+    def __call__(self, image, hands=None, shape=None):
         """The object in the middle of `image`, on a transparent background (RGBA, the size of
-        `image`), and how it was found. `hands`: hand landmarks seen in it (0..1), not the object."""
+        `image`), and how it was found. `hands`: hand landmarks seen in it (0..1), not the object.
+        shape="can": of SAM 2's answers, the can's own outline (can_like) rather than the largest."""
         import numpy as np
         import torch
         from PIL import Image, ImageFilter
@@ -184,11 +186,18 @@ class Cutter:
         # The object is held in the middle of the square: SAM 2 is asked with a point there (and
         # with two more close to it). Each answer comes in three sizes (a detail, a part, the whole).
         centre = [w / 2, h / 2]
-        best = pick(ask([centre]) + ask([centre, [w / 2, h * 0.46], [w / 2, h * 0.54]]))
+        first = ask([centre]) + ask([centre, [w / 2, h * 0.46], [w / 2, h * 0.54]])
+        best = pick(first)
         self.found = [best and (round(best[0], 2), round(best[1], 3))]
+        can = can_like(first) if shape == "can" else None
+        if can is not None:
+            # A person right behind a can is "the largest thing in the middle" too: for a can,
+            # its upright rectangle wins, and the outline is not grown any further.
+            best = can
+            self.found.append(("can", round(can[1], 3)))
         # Often that is a detail of the object (a print on a mug). Asked again with a box twice its
         # size, SAM 2 answers with the main thing in the box: the object. Until it stops growing.
-        for _ in range(3):
+        for _ in range(0 if can is not None else 3):
             if best is None:
                 break
             ys, xs = np.nonzero(best[2])
@@ -252,6 +261,21 @@ def _around_center(mask):
     return mask & big
 
 
+def can_like(found):
+    """Of SAM 2's answers (score, area, mask), the largest that looks like a can seen from the
+    side: it fills most of its bounding box, and it is taller than wide. None if none does."""
+    import numpy as np
+    cans = []
+    for score, area, mask in found:
+        ys, xs = np.nonzero(mask)
+        if score < 0.5 or len(xs) < 100:
+            continue
+        bw, bh = np.ptp(xs) + 1, np.ptp(ys) + 1
+        if mask.sum() / (bw * bh) > 0.8 and 0.2 < bw / bh < 1.0:
+            cans.append((score, area, mask))
+    return max(cans, key=lambda f: f[1]) if cans else None
+
+
 def hand_mask(hands, w: int, h: int):
     """Where the hands are in a w x h picture: each hand's outline (the convex hull of its 21
     points, 0..1) grown by a quarter around its middle, so the fingers' width is in it too."""
@@ -312,7 +336,7 @@ def _load_cutter() -> None:
             raise
 
 
-def _cutout(photo: Path, hands=None) -> Path:
+def _cutout(photo: Path, hands=None, shape=None) -> Path:
     """The photo with only the object left (a PNG next to it), or the photo itself when that fails."""
     if not CUTOUT or _cutter_broken:
         return photo
@@ -321,7 +345,7 @@ def _cutout(photo: Path, hands=None) -> Path:
         _load_cutter()
         image = Image.open(photo)
         image.thumbnail((1024, 1024))
-        cut, how = _cutter(image, hands)
+        cut, how = _cutter(image, hands, shape)
         if cut is None:
             log.info("%s: %s; Idol removes the background itself", photo.name, how)
             return photo
@@ -573,10 +597,13 @@ def _solid(kind: str, points, colours) -> tuple[bytes | None, bool]:
 WRAP = os.environ.get("WRAP", "1") != "0"
 
 
-def wraps(kind: str) -> bool:
-    """Whether a scan of `kind` is wrapped around a cylinder rather than given to Idol: a can or
-    another drink, when SAM 2 is there to cut it out (the GPU PC, or this machine's GPU)."""
-    return WRAP and solid_mug is not None and BACKEND in ("remote", "local") and solid_mug.is_can_name(kind)
+def wraps(kind: str, how: str = "auto") -> bool:
+    """Whether a scan of `kind` is wrapped around a cylinder rather than given to Idol: as asked
+    (how="wrap" / "idol"), or by its name (how="auto": a can or another drink). Only when SAM 2 is
+    there to cut it out (the GPU PC, or this machine's GPU)."""
+    if not (WRAP and solid_mug is not None and BACKEND in ("remote", "local")) or how == "idol":
+        return False
+    return how == "wrap" or solid_mug.is_can_name(kind)
 
 
 def cutouts(photos: list[Path], hands: list) -> list:
@@ -588,7 +615,8 @@ def cutouts(photos: list[Path], hands: list) -> list:
     if BACKEND == "remote":
         files = [("image", (p.name, p.read_bytes(), "image/jpeg")) for p in photos]
         try:
-            r = requests.post(IDOL_URL + "/cutout", data={"hands": json.dumps(hands)}, files=files, timeout=300)
+            r = requests.post(IDOL_URL + "/cutout", data={"hands": json.dumps(hands), "shape": "can"},
+                              files=files, timeout=300)
         except requests.RequestException as e:
             raise RuntimeError(f"the GPU PC does not answer ({e})") from None
         if r.status_code != 200:
@@ -599,12 +627,12 @@ def cutouts(photos: list[Path], hands: list) -> list:
     return [np.array(Image.open(io.BytesIO(png)).convert("RGBA")) for png in pngs]
 
 
-def _cutouts_here(photos: list[Path], hands: list) -> list[Path]:
+def _cutouts_here(photos: list[Path], hands: list, shape: str | None = "can") -> list[Path]:
     _load_cutter()
     out = []
     for k, photo in enumerate(photos):
         _progress(step="cutting", view=k + 1, views=len(photos))
-        cut = _cutout(photo, hands[k])
+        cut = _cutout(photo, hands[k], shape)
         if cut == photo:
             raise RuntimeError(f"SAM 2 could not cut out photo {k + 1}")
         out.append(cut)
@@ -630,7 +658,7 @@ def _small(rgba) -> str:
 
 @app.post("/scan")
 def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: float = Form(10.0),
-         gaussians: int | None = Form(None), hands: str = Form("")) -> dict:
+         gaussians: int | None = Form(None), hands: str = Form(""), how: str = Form("auto")) -> dict:
     kind = object_name(name)
     n = detail(gaussians)
     if not 2 <= height_cm <= 30:
@@ -660,7 +688,7 @@ def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: 
     def work(photos: list[Path]) -> dict:
         start = time.monotonic()
         seen_hands = _parse_hands(hands, len(photos))
-        if wraps(kind):
+        if wraps(kind, how):
             done = wrapped(photos, seen_hands, start)
             if done:
                 return done
@@ -702,7 +730,7 @@ def forget(name: str) -> dict:
 
 
 @app.post("/cutout")
-def cutout_only(image: list[UploadFile] = File(...), hands: str = Form("")) -> dict:
+def cutout_only(image: list[UploadFile] = File(...), hands: str = Form(""), shape: str = Form("can")) -> dict:
     """Only SAM 2's cut-outs (PNG, base64): what a remote server answers for a can. SAM 2 is small:
     the language model stays loaded meanwhile."""
     import base64
@@ -710,7 +738,7 @@ def cutout_only(image: list[UploadFile] = File(...), hands: str = Form("")) -> d
         raise HTTPException(400, "Cut-outs need SAM 2 on a GPU (IDOL_BACKEND=local).")
 
     def work(photos: list[Path]) -> dict:
-        found = _cutouts_here(photos, _parse_hands(hands, len(photos)))
+        found = _cutouts_here(photos, _parse_hands(hands, len(photos)), shape if shape == "can" else None)
         return {"cutouts": [base64.b64encode(p.read_bytes()).decode() for p in found]}
 
     return _run(None, image, work)
