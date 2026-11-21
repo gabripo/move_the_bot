@@ -115,3 +115,38 @@ def test_network_problems_become_readable_errors(monkeypatch):
     monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _Response({}, 500))
     with pytest.raises(llm.LLMError):
         llm.ask("hello", World())
+
+
+def test_thirst_prefers_the_scanned_drink():
+    world = World()
+    world.add("mug", 0.2, 0.1)
+    world.add("monster drink", 0.2, -0.1, size=(0.066, 0.066, 0.17))
+    world.add("apple", 0.25, 0.0)
+    assert llm.is_drink("monster drink") and llm.is_drink("mug 2") and not llm.is_drink("apple")
+    assert [n for n, _ in llm.drinks(world, ["monster drink"])] == ["monster drink", "mug"]
+    assert [n for n, _ in llm.drinks(world)] == ["mug", "monster drink"]         # not scanned: table order
+    text = llm.user_prompt("I'm thirsty", world, scanned=["monster drink"])
+    assert "Drinks, best first: monster drink (scanned, on the table); mug (on the table)" in text
+    assert "Scanned with the webcam" in text and "thirsty" in llm.system_prompt()
+
+
+def test_a_scanned_drink_not_on_the_table_is_offered_to_create():
+    world = World()
+    world.add("mug", 0.2, 0.1)
+    assert llm.drinks(world, ["monster drink", "stapler"]) == [
+        ("monster drink", "scanned, create it"), ("mug", "on the table")]
+
+
+def test_picking_a_scanned_object_that_is_not_there_creates_it():
+    world = World()
+    world.add("red cube", 0.2, 0.1)
+    plan = [{"skill": "pick", "object": "monster drink"}, {"skill": "place", "at": {"position": "front"}}]
+    assert llm.create_missing(plan, world, ["monster drink"]) == [
+        {"skill": "spawn", "object": "monster drink", "at": {"position": "front"}}]
+    # On the table (also by a shorter name), or not a known object: left alone.
+    world.add("monster drink", 0.25, 0.0)
+    assert llm.create_missing(plan, world, ["monster drink"]) == plan
+    cube = [{"skill": "pick", "object": "cube"}, {"skill": "place", "at": {"position": "left"}}]
+    assert llm.create_missing(cube, world) == cube
+    odd = [{"skill": "pick", "object": "unicorn"}]
+    assert llm.create_missing(odd, world) == odd

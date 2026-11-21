@@ -11,8 +11,10 @@
 // Starting: the Start button, the Space key, a thumbs-up to the camera, or saying (or typing)
 // "scan my mug" / "scan a stapler, 8 cm". A countdown leaves time to show the object. Between
 // photos the next one comes by itself after a few seconds; Space or "next" takes it at once.
-// In recording mode (quickStart) Space and a thumbs-up also start a scan with the panel closed:
-// the thumbs-up is then watched through the webcam bubble, and the last name is used again.
+// In recording mode (quickStart) Space and a thumbs-up also open the scanner with the panel closed
+// (the thumbs-up is then watched through the webcam bubble). Opened that way, or with a bare
+// "scan", it first waits for the object's name: the name box is selected (the last name, ready to
+// be typed over), and Enter, holding Space or a new thumbs-up then starts the photos.
 //
 // A scan that went wrong is forgotten with the ✕ next to it in "Your scans", or by saying (or
 // typing) "delete the mug scan" / "forget the scanned mug": the object is taken off the table, and
@@ -54,6 +56,7 @@ export class Scanner {
       if (e.target === $("scan-name") || e.target === $("scan-height")) {
         if (e.target === $("scan-height") || e.repeat) {
           e.preventDefault();
+          if (performance.now() - (this.askedAt || 0) < 1500) return;   // still the Space that opened it
           if (this.state === "ready" && $("scan-name").value.trim() && !this.starting) this.trigger();
         }
         return;
@@ -95,8 +98,9 @@ export class Scanner {
 
   // ------------------------------------------------------------ open, close, start
 
-  async open({ name = "", height = null, start = false } = {}) {
+  async open({ name = "", height = null, start = false, askName = false, byThumb = false } = {}) {
     if (this.state === "working") return;
+    this.thumbWait = byThumb;                 // the thumbs-up that opened it must come down first
     if (name) $("scan-name").value = name;
     else if (!$("scan-name").value && this.lastName) $("scan-name").value = this.lastName;
     if (height) $("scan-height").value = String(height);
@@ -107,7 +111,7 @@ export class Scanner {
       this._overlay("");
       this._status("Hold the object inside the square, on a plain background. Start: the button, Space, a 👍 or say “scan …”.");
       if (!$("scan-name").value) $("scan-name").focus();     // else Space would type into it
-      else if (document.activeElement === $("scan-name")) $("scan-name").blur();
+      else if (document.activeElement === $("scan-name") && !askName) $("scan-name").blur();
       try {
         this.stream = await openCamera({ width: { ideal: 1280 }, height: { ideal: 720 } });
         $("scan-cam").srcObject = this.stream;
@@ -119,7 +123,19 @@ export class Scanner {
         return;
       }
     }
-    if (start) this.trigger();
+    if (askName) this._askName();
+    else if (start) this.trigger();
+  }
+
+  // Waits for the object's name before any photo: typed over the last one, then Enter, a held
+  // Space or a thumbs-up.
+  _askName() {
+    const box = $("scan-name");
+    if (this.thumbWait) this.thumbLast = performance.now();   // the camera took a while to open
+    this.askedAt = performance.now();
+    box.focus();
+    box.select();
+    this._status("What is it? Type its name (and its height), then Enter, hold Space or 👍 to take the photos.", "busy");
   }
 
   close() {
@@ -134,8 +150,8 @@ export class Scanner {
   }
 
   // The button, Space, "next", a thumbs-up: start, or take the next photo now.
-  trigger() {
-    if (this.state === "closed") this.open({ start: !!this.lastName });   // recording mode: Space / 👍
+  trigger(how = "") {
+    if (this.state === "closed") this.open({ askName: true, byThumb: how === "thumb" });     // recording mode: Space / 👍: name it first
     else if (this.state === "ready" && !this.starting) this._run();
     else if (this.state === "capturing") this.skip?.();
   }
@@ -201,7 +217,7 @@ export class Scanner {
     let what = (m[1] || "").replace(/^(this|my|the|a|an)\s+/, "");
     const cm = what.match(/,?\s*(\d+(?:\.\d+)?)\s*(?:cm|centimet(?:er|re)s?)\s*(?:tall|high)?$/);
     if (cm) what = what.slice(0, cm.index);
-    this.open({ name: what.trim(), height: cm ? parseFloat(cm[1]) : null, start: !!what.trim() });
+    this.open({ name: what.trim(), height: cm ? parseFloat(cm[1]) : null, start: !!what.trim(), askName: !what.trim() });
     return true;
   }
 
@@ -367,13 +383,21 @@ export class Scanner {
   seeHand(landmarks, now = performance.now()) {
     // Closed: only in recording mode, and not just after a scan (the hand may still be up).
     if (this.state !== "ready" && !(this.state === "closed" && this.quickStart() && now - (this.closedAt || -1e9) > 5000)) return;
-    if (!isThumbsUp(landmarks)) return;
+    if (!isThumbsUp(landmarks)) {
+      if (this.state === "ready" && landmarks) this.thumbWait = false;   // the hand is there, thumb down
+      return;
+    }
+    if (this.state === "ready" && this.thumbWait) {
+      // Still the thumbs-up that opened the scanner (seen less than 1.5 s ago): not a start.
+      if (this.thumbLast && now - this.thumbLast < 1500) { this.thumbLast = now; return; }
+      this.thumbWait = false;
+    }
     if (!this.thumbSince || now - this.thumbLast > 1000) {           // slow trackers: a frame or two a second
       this.thumbSince = now;
       if (this.state === "ready") this._status("👍 seen: hold it…", "busy");
     }
     this.thumbLast = now;
-    if (now - this.thumbSince > 500) { this.thumbSince = 0; this.trigger(); }
+    if (now - this.thumbSince > 500) { this.thumbSince = 0; this.trigger("thumb"); }
   }
 
   // ------------------------------------------------------------ to 3D, on the GPU
@@ -401,7 +425,7 @@ export class Scanner {
       clearInterval(poll);
       this.onEvent("done", { ...answer, onGpu: this.onGpu });
       this._cardEnd(true, `“${answer.name}” is ready`, `3D from ${n > 1 ? `${n} photos` : "one photo"} in ${Math.round(answer.seconds)} s`
-        + ` · ${(answer.points || 0).toLocaleString()} points`);
+        + (answer.solid ? " · made solid" : ` · ${(answer.points || 0).toLocaleString()} points`));
       this._changed();
       this.state = "ready";
       this.close();
