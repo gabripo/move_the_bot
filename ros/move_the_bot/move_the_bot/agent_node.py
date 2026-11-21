@@ -146,7 +146,8 @@ class Agent(Node):
 
     def _understand(self, text: str) -> list | None:
         # Objects scanned with the webcam (the optional scanner) are words the rules must know.
-        language.set_extra_kinds(models3d.scanned_kinds(os.environ.get("MODELS_DIR", "/models")))
+        scanned = models3d.scanned_kinds(os.environ.get("MODELS_DIR", "/models"))
+        language.set_extra_kinds(scanned)
         world = self._world()
         if not self.llm_only:
             skills = language.parse(text, world)
@@ -156,7 +157,7 @@ class Agent(Node):
         self._log("info", f"Asking the language model ({llm.model_name()})…")
         started = time.monotonic()
         try:
-            skills, say, problems = llm.ask(text, world, self.hand)
+            skills, say, problems = llm.ask(text, world, self.hand, scanned)
         except llm.LLMError as e:
             self._log("error", f"I did not understand that, and the language model did not help: {e}.")
             return None

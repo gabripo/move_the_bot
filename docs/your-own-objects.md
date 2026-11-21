@@ -12,7 +12,8 @@ The photo is turned into 3D by **Idol**, an open image-to-3D model by Speridlabs
 flowchart LR
     P["📷 one photo<br/>of your mug"] --> I["Idol<br/>image → 3D Gaussian splat<br/>(Hugging Face demo or your GPU)"]
     I --> S["scripts/photo_to_3d.py<br/>splat → coloured points,<br/>upright, facing the camera"]
-    S --> L["models/local/mug.glb<br/>(only on your computer)"]
+    S --> M["scripts/solid_mug.py<br/>a mug, cup or can:<br/>points → solid model"]
+    M --> L["models/local/mug.glb<br/>(only on your computer)"]
     L --> W["the 3D view draws your mug<br/>whenever you say 'create a mug'"]
 ```
 
@@ -24,8 +25,17 @@ flowchart LR
 2. **`scripts/photo_to_3d.py`** turns the splat into coloured points. It drops faint and oversized
    blobs and stray points, stands the object upright on its footprint, turns the photographed side
    towards the camera of the recording view and writes `models/local/<name>.glb`.
-3. **The robot** looks for `models/local/<name>.glb` before its own models, and the browser draws
-   the points with a dark core inside, so the gaps between them show the object, not the table.
+3. **`scripts/solid_mug.py`** makes round things solid. Up close, points are scattered dots with
+   gaps where no photo looked. For an object named like a mug, cup, can or drink whose points do
+   look like a cylinder, it builds a cylinder of the points' radius and height instead, wearing
+   the points unrolled around its axis as a texture (the sides no photo saw get the object's own
+   dark colour), with a rim, an inside, a bottom and, if points stick out, a handle tube fitted to
+   them. `--points` keeps the points; `python3 scripts/solid_mug.py models/local/mug.glb` makes an
+   existing point model solid (keeping a backup in `models/local/backup/`). The scanner does the
+   same by itself (`SOLID=0` turns it off).
+4. **The robot** looks for `models/local/<name>.glb` before its own models. The browser draws a
+   solid model as it is, and points with a dark core inside, so the gaps between them show the
+   object, not the table.
 
 The look changes, the physics do not: the robot still plans and grasps with the object's simple
 shape from the catalogue (a mug is a cylinder 6 cm wide and 7 cm tall, see
@@ -36,7 +46,7 @@ shape from the catalogue (a mug is a cylinder 6 cm wide and 7 cm tall, see
 **With the script**, which sends the photo to Idol's public demo:
 
 ```bash
-pip install numpy gradio_client
+pip install numpy scipy pillow gradio_client
 python3 scripts/photo_to_3d.py --image my-mug.jpg --name mug
 ./run.sh --rebuild
 ```
@@ -254,6 +264,12 @@ cd tests/e2e && CHECK_SCAN=1 node browser_test.mjs
 
 - **With one photo, the back is invented.** A print on the front may come back on the back as
   well. Four sides or a video avoid it.
+- **Your drinks come first.** Scanned objects are named to the language model as the user's own,
+  and anything named like a drink (a "monster drink", a "coke can", a mug) is listed best first:
+  scanned drinks on the table, scanned drinks to create, then the other drinks. "I'm thirsty"
+  brings the first of them to the front of the table.
+- **Mugs, cups and cans are solid; other things are points.** A stapler or a teapot is not a
+  cylinder, so it stays a cloud of points (see `scripts/solid_mug.py`).
 - **Free demo quota.** The demo runs on Hugging Face's shared GPUs, which give a short daily
   quota to visitors who are not logged in; a run asks for 3 minutes of it. Logged in to Hugging
   Face in your browser you get more, or run Idol on your own GPU.

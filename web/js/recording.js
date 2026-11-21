@@ -29,13 +29,12 @@ const norm = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
 const MOTION = new Set(["pick", "place", "move_to", "move_by", "home", "reset"]);
 const SCRIPT = [
   "R · opening title, 2 s",
-  "M · “I'm thirsty” (the LLM plans it)",
   "type “put the apple on the cube” (rules)",
   "H · steer with the hand, pinch to grab · H",
   "“create a ball here”",
-  "👍 or “scan my mug” · 4 sides, a quarter turn each",
-  "wait for the GPU PC (cut in the edit)",
-  "“pick up the mug”",
+  "👍 or Space · type “monster drink”, 17 cm · Enter or 👍",
+  "4 sides, a quarter turn each; wait for the GPU PC (cut in the edit)",
+  "M · “I'm thirsty”: the LLM brings the Monster, not the mug",
   "E · end card, 3 s · V stops the video",
 ];
 const ICONS = { voice: "🎤", text: "⌨️", hand: "✋", "voice+hand": "🎤✋", click: "🖱️", scan: "📷" };

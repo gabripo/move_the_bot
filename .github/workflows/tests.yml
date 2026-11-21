@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install numpy requests pytest fastapi httpx python-multipart   # the last three: the scan server
+      - run: pip install numpy scipy pillow requests pytest fastapi httpx python-multipart   # scipy, pillow: solid_mug.py; the last three: the scan server
       - run: python -m pytest tests/unit -v
 
   end-to-end:

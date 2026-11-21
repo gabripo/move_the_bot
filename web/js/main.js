@@ -229,7 +229,7 @@ Object.assign(window.mtb, {
 scanner = new Scanner({
   send: (text) => { rec?.source(text, "scan"); send(text); },
   onEvent: (state, info) => rec?.scan(state, info),
-  quickStart: () => !!rec && !teleopOn,       // recording mode: Space / 👍 start a scan at once
+  quickStart: () => !!rec && !teleopOn,       // recording mode: Space / 👍 open the scanner, which asks for the name
   pcName: params.get("llmpc") || "my gaming PC",
 });
 window.mtb.scanner = scanner;

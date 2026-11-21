@@ -93,7 +93,8 @@ which tab to share, choose this one. **P** pauses and resumes, **V** again stops
 of the demo area only to Downloads. The other keys: **S** sets the scene, **R** shows the opening
 title (and unticks the script), **M** speaks, **H** hand control, **E** the end card, **Esc** stops
 the arm, **/** types a command, **Space** or a thumbs-up to the webcam (held half a second)
-starts a scan of the object named last time. `&script=line one;line two` replaces the script.
+opens the scanner, which first asks what the object is: type its name over the last one (and its
+height), then Enter, a held Space or a new thumbs-up takes the photos. `&script=line one;line two` replaces the script.
 
 The column also sets up the demo: **Scene** lists what S creates (type "a teapot on the left" to
 add an object, ✕ to remove one; this browser remembers it, "reset" goes back), and **Scans** lists

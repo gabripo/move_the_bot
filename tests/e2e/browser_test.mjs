@@ -151,6 +151,24 @@ if (process.env.CHECK_SCAN === "1") {
       });
   });
   await sayAndWait(page, "clear the table");
+
+  await check("scan: in recording mode Space first asks for the name, Enter takes the photos", async () => {
+    const rec = await browser.newPage({ viewport: { width: 1600, height: 820 } });
+    await rec.goto(`${BASE_URL}?rec`);
+    await rec.waitForFunction(() => window.mtb && window.mtb.ready(), null, { timeout: 120000 });
+    await rec.waitForSelector("#btn-scan:not([hidden])", { timeout: 10000 });
+    await rec.evaluate(() => document.activeElement?.blur());
+    await rec.keyboard.press(" ");
+    await rec.waitForFunction(() => document.activeElement?.id === "scan-name", null, { timeout: 10000 });
+    await sleep(1500);
+    assert.equal(await rec.evaluate(() => window.mtb.scanner.state), "ready", "no photos before the name");
+    await rec.keyboard.type("monster drink");
+    assert.equal(await rec.inputValue("#scan-name"), "monster drink", "typing replaces the last name");
+    await rec.press("#scan-name", "Enter");
+    await rec.waitForFunction(() => window.mtb.scanner.state === "capturing", null, { timeout: 10000 });
+    await rec.evaluate(() => window.mtb.scanner.close());
+    await rec.close();
+  });
 }
 
 await check("recording mode: a 16:9 demo area, the keys and script beside it", async () => {
