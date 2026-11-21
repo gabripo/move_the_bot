@@ -68,6 +68,11 @@ case "${1:-}" in
 esac
 
 step "1. move_the_bot, with the object scanner"
+if ! docker info >/dev/null 2>&1 && [ "$(uname)" = Darwin ]; then
+  open -a Docker                                  # Docker Desktop quits now and then
+  for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 3; done
+  docker info >/dev/null 2>&1 && ok "Docker Desktop started" || bad "Docker Desktop does not start: open it by hand"
+fi
 if answers "$WEB/" && answers "$WEB/scan/health"; then
   ok "already running"
 else
