@@ -412,6 +412,8 @@ def wrap_can(cutouts: list, hands: list | None = None, size=(2048, 1024)) -> tup
     png = io.BytesIO()
     Image.fromarray((np.clip(image, 0, 1) * 255).round().astype(np.uint8)).save(png, "PNG", optimize=True)
     aspect = float(np.median([a for _, _, a in views]))
+    if not 0.15 < aspect < 1.2:                   # not a can's proportions: a photo was misread
+        raise ValueError(f"width / height {aspect:.2f} is not a can's")
 
     # The can: its side wearing the photos, a lid and a bottom.
     N, rows, H = 128, 9, 1.0
