@@ -96,7 +96,10 @@ the arm, **/** types a command, **Space** or a thumbs-up to the webcam (held hal
 opens the scanner, which first asks what the object is: type its name over the last one (and its
 height), then Enter, a held Space or a new thumbs-up takes the photos. `&script=line one;line two` replaces the script.
 
-The column also sets up the demo: **Scene** lists what S creates (type "a teapot on the left" to
+Under the keys, **Say** lists what to say (or type): objects, moves, the drinks the language
+model picks ("I'm thirsty!" brings the mug, "I'm still thirsty!" or "I need a real drink!" the
+scanned Monster: a drink already brought to the front of the table counts last), and the
+scanner's words. The column also sets up the demo: **Scene** lists what S creates (type "a teapot on the left" to
 add an object, ✕ to remove one; this browser remembers it, "reset" goes back), and **Scans** lists
 the scanned objects, with ✕ to forget one that went wrong.
 

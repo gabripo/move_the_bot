@@ -12,13 +12,14 @@ Whatever it answers is validated before the robot moves.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 
 import requests
 
 from .skills import PLACE_HELP, SKILLS, validate
-from .world import CATALOGUE, COLORS, World
+from .world import CATALOGUE, COLORS, POSITIONS, World
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b-instruct-q4_K_M")
@@ -44,15 +45,23 @@ def is_drink(name: str) -> bool:
     return any(f" {w} " in words or f" {w}s " in words for w in DRINK_WORDS)
 
 
+BROUGHT = 0.07     # metres from the front of the table: a drink there was brought to the user
+
+
 def drinks(world: World, scanned=()) -> list:
-    """What to bring someone thirsty, best first: their own scanned drinks on the table, then
-    scanned drinks to create, then the other drinks on the table. [(name, note)]."""
+    """What to bring someone thirsty, best first: the drinks on the table (the user's own scanned
+    ones first), then scanned drinks to create; last, the drinks already brought to the front
+    ("I'm still thirsty" means another one). [(name, note)]."""
     scanned = [" ".join(k.lower().split()) for k in scanned]
-    on_table = [o for o in world.objects.values() if is_drink(o.name) or is_drink(o.kind)]
-    best = [(o.name, "scanned, on the table") for o in on_table if o.kind in scanned]
+    fx, fy = POSITIONS["front"]
+    on_table = [o for o in world.objects.values() if (is_drink(o.name) or is_drink(o.kind)) and not o.held]
+    brought = [o for o in on_table if math.hypot(o.x - fx, o.y - fy) < BROUGHT]
+    waiting = [o for o in on_table if o not in brought]
+    best = [(o.name, "scanned, on the table") for o in waiting if o.kind in scanned]
+    best += [(o.name, "on the table") for o in waiting if o.kind not in scanned]
     best += [(k, "scanned, create it") for k in scanned
              if is_drink(k) and not any(o.kind == k for o in on_table)]
-    best += [(o.name, "on the table") for o in on_table if o.kind not in scanned]
+    best += [(o.name, "already brought to the user") for o in brought]
     return best
 
 
@@ -81,7 +90,11 @@ def system_prompt() -> str:
         "- If the request is not something the arm can do, return an empty skills list and explain in \"say\".\n"
         "- If the user is thirsty or wants a drink, bring the FIRST drink of the \"Drinks\" line: pick it and "
         "place it at the front (towards the user); if it is not on the table yet, create it at the front. "
-        "Objects the user scanned come first: they are their own. Without a Drinks line, create a bottle.\n\n"
+        "Without a Drinks line, create a bottle.\n"
+        "- \"Still thirsty\", \"another drink\": a different drink from the one already brought: the first drink "
+        "of the line that is not \"already brought\". If there is none, create a bottle.\n"
+        "- \"A real drink\", \"a proper drink\", \"something better\": the user's own drink, the first \"scanned\" one "
+        "of the line (pick it, or create it if it says so), even if another drink comes before it.\n\n"
         "EXAMPLES\n"
         "User: tidy up, put everything on the left\n"
         "(table: apple, cube)\n"
@@ -93,7 +106,11 @@ def system_prompt() -> str:
         "{\"skills\":[{\"skill\":\"pick\",\"object\":\"red cube\"},{\"skill\":\"place\",\"at\":{\"object\":\"blue cube\",\"relation\":\"on\"}}],"
         "\"say\":\"Stacking the red cube on the blue cube.\"}\n"
         "User: I'm thirsty\n"
-        "(table: mug, monster drink. Drinks, best first: monster drink (scanned, on the table); mug (on the table))\n"
+        "(table: mug, apple. Drinks, best first: mug (on the table); monster drink (scanned, create it))\n"
+        "{\"skills\":[{\"skill\":\"pick\",\"object\":\"mug\"},{\"skill\":\"place\",\"at\":{\"position\":\"front\"}}],"
+        "\"say\":\"Here is your mug.\"}\n"
+        "User: I'm still thirsty!\n"
+        "(table: mug, monster drink. Drinks, best first: monster drink (scanned, on the table); mug (already brought to the user))\n"
         "{\"skills\":[{\"skill\":\"pick\",\"object\":\"monster drink\"},{\"skill\":\"place\",\"at\":{\"position\":\"front\"}}],"
         "\"say\":\"Here is your monster drink.\"}\n"
         "User: I'm thirsty\n"
@@ -220,15 +237,30 @@ def ask(text: str, world: World, hand=None, scanned=()) -> tuple:
     return create_missing(skills, world, scanned), say, problems
 
 
+def _overlaps(a: str, b: str) -> bool:
+    """'monster drink' and 'monster', 'red bull can' and 'red bull': one name inside the other."""
+    a, b = f" {a} ", f" {b} "
+    return a != b and (a in b or b in a)
+
+
 def create_missing(skills: list, world: World, scanned=()) -> list:
     """Models like to pick a scanned object that is not on the table yet ("bring me my monster
-    drink"): such a pick, and the place after it, become creating it where it was to go."""
-    known = {" ".join(k.lower().split()) for k in scanned} | set(CATALOGUE)
+    drink"): such a pick, and the place after it, become creating it where it was to go. A name
+    a little off ("monster drink" for the scanned "monster") becomes the real one first."""
+    scanned = [" ".join(k.lower().split()) for k in scanned]
+    known = set(scanned) | set(CATALOGUE)
     there = set()                       # created earlier in this plan
     out, i = [], 0
     while i < len(skills):
         s = skills[i]
         name = str(s.get("object", "")).lower()
+        if name and s.get("skill") in ("pick", "spawn", "remove") and name not in known and world.find(name) is None:
+            # "monster drink" for the scanned "monster" (or the other way round): the real name
+            near = [o.name for o in world.objects.values() if _overlaps(name, o.name)] + \
+                   [k for k in scanned if _overlaps(name, k)]
+            if near:
+                name = near[0]
+                s = {**s, "object": name}
         if s.get("skill") == "pick" and name in known and name not in there and world.find(name) is None:
             follows = skills[i + 1] if i + 1 < len(skills) else None
             if follows and follows.get("skill") == "place":
