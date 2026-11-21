@@ -35,10 +35,25 @@ TEXTURE = (2048, 1024)
 _LUM = np.array([0.2126, 0.7152, 0.0722])
 
 
+def _has_word(name: str, words) -> bool:
+    text = " " + " ".join(name.lower().replace("_", " ").split()) + " "
+    return any(f" {w} " in text or f" {w}s " in text for w in words)
+
+
 def is_round_name(name: str) -> bool:
     """True for names like 'kaioken mug', 'monster drink', 'coke can'."""
-    words = " " + " ".join(name.lower().replace("_", " ").split()) + " "
-    return any(f" {w} " in words or f" {w}s " in words for w in ROUND_WORDS)
+    return _has_word(name, ROUND_WORDS)
+
+
+# Cans and the like: no handle, the same width from top to bottom. Their photos are wrapped
+# around a cylinder (wrap_can) instead of going through Idol.
+CAN_WORDS = ("can", "tin", "drink", "soda", "cola", "coke", "pepsi", "beer", "monster", "red bull",
+             "energy drink", "sprite", "fanta")
+
+
+def is_can_name(name: str) -> bool:
+    """True for 'monster', 'monster drink', 'coke can'; not for a mug or a bottle (a neck)."""
+    return _has_word(name, CAN_WORDS)
 
 
 def srgb_to_linear(c: np.ndarray) -> np.ndarray:
@@ -261,6 +276,162 @@ def _handle(p, c, r, ang, R, H, th):
             faces += [[a0, a1, a0 + M], [a1, a1 + M, a0 + M]]
     lum = hc @ _LUM
     return pos, nrm, np.array(faces), np.median(hc[lum <= np.median(lum)], axis=0)
+
+
+# ----------------------------------------------------------------------------- a can, from photos
+#
+# A can is a cylinder: all a photo has to tell is its proportions and its label. Each photo, cut
+# out (RGBA), shows the can's front as a rectangle; a column of it at s (-1 left .. 1 right of the
+# axis) shows the surface at the angle asin(s) from the photo's direction. So the photos, a
+# quarter turn apart, are unrolled side by side; where two overlap, the one seeing it more
+# head-on counts more. Hands (their landmarks, and skin colours) do not count: the other photos,
+# or the can's own colour, fill in behind them.
+
+FACE_CAMERA = 147.0      # degrees: where the first photo's side faces (photo_to_3d.FACE_CAMERA_YAW)
+
+
+def _can_frame(alpha: np.ndarray):
+    """The can's rectangle in a cut-out: (middle x, half width, top row, bottom row), in pixels.
+    Rows as wide as the body around the middle of its height; hands under or over it are not."""
+    rows = np.flatnonzero(alpha.any(1))
+    if len(rows) < 20:
+        raise ValueError("no object in the cut-out")
+    left = np.array([np.argmax(r) if r.any() else -1 for r in alpha])
+    right = np.array([len(r) - 1 - np.argmax(r[::-1]) if r.any() else -1 for r in alpha])
+    width = np.where(left >= 0, right - left, 0)
+    lo, hi = rows[0], rows[-1]
+    band = np.arange(int(lo + 0.35 * (hi - lo)), int(lo + 0.65 * (hi - lo)) + 1)
+    w0 = np.median(width[band])
+    l0, r0 = np.median(left[band]), np.median(right[band])
+    body = (np.abs(width - w0) < 0.1 * w0) & (np.abs(left - l0) < 0.08 * w0) & (np.abs(right - r0) < 0.08 * w0)
+    # the run of body rows around the middle, allowing short gaps (a finger across it)
+    middle = int(band[len(band) // 2])
+    top = bottom = middle
+    gap = max(3, int(0.04 * (hi - lo)))
+    while top - 1 >= lo and body[max(lo, top - gap):top].any():
+        top -= 1
+    while bottom + 1 <= hi and body[bottom + 1:bottom + 1 + gap].any():
+        bottom += 1
+    if bottom - top < 0.2 * (hi - lo) or w0 < 10:
+        raise ValueError("no can shape in the cut-out")
+    return (l0 + r0) / 2, max(w0 / 2, 1.0), int(top), int(bottom)
+
+
+def _skin(rgb: np.ndarray) -> np.ndarray:
+    """Skin colours (YCrCb ranges), 0..255 RGB."""
+    r, g, b = rgb[..., 0].astype(float), rgb[..., 1].astype(float), rgb[..., 2].astype(float)
+    y = 0.299 * r + 0.587 * g + 0.114 * b
+    cr, cb = (r - y) * 0.713 + 128, (b - y) * 0.564 + 128
+    return (cr > 138) & (cr < 175) & (cb > 85) & (cb < 128) & (y > 60)
+
+
+def _hands_mask(hands, w: int, h: int) -> np.ndarray:
+    from PIL import Image, ImageDraw
+    canvas = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(canvas)
+    for hand in hands or []:
+        pts = np.asarray(hand, dtype=float).reshape(-1, 2) * [w, h]
+        if len(pts) < 5:
+            continue
+        middle = pts.mean(0)
+        angle = np.arctan2(*(pts - middle).T[::-1])
+        ring = pts[np.argsort(angle)]                           # a star-shaped outline is enough
+        draw.polygon([tuple(p) for p in middle + 1.3 * (ring - middle)], fill=255)
+    return np.array(canvas) > 0
+
+
+def _unroll(cut: np.ndarray, hands, direction: float, W: int, Ht: int):
+    """One photo on the texture: (colours, weights) for a photo facing `direction` degrees."""
+    from scipy import ndimage
+    rgb, alpha = cut[..., :3], cut[..., 3] > 127
+    h, w = alpha.shape
+    can = alpha & ~_hands_mask(hands, w, h)
+    xc, half, top, bottom = _can_frame(can)
+    # Skin: a hand reaches out of the can's outline, a skin-coloured print does not. Rows at the
+    # ends that are mostly such skin (a hand under it, as wide as the can) are not the can.
+    skin = _skin(rgb) & alpha
+    parts, n = ndimage.label(skin)
+    if n:
+        inside = np.zeros_like(alpha)
+        inside[top:bottom + 1, int(xc - half) + 2:int(xc + half) - 1] = True
+        out = np.unique(parts[skin & ~inside])
+        skin = np.isin(parts, out[out > 0])
+        cols = slice(int(xc - half), int(xc + half) + 1)
+        while bottom - top > 20 and skin[bottom, cols].mean() > 0.5:
+            bottom -= 1
+        while bottom - top > 20 and skin[top, cols].mean() > 0.5:
+            top += 1
+    keep = ndimage.binary_erosion(can & ~skin, iterations=2)     # not the edges: background shows there
+    azimuth = (np.arange(W) + 0.5) / W * 360 - 180              # the texture's columns
+    phi = (azimuth - direction + 180) % 360 - 180               # from the photo's direction
+    seen = np.abs(phi) < 72
+    x = xc - half * np.sin(np.radians(phi))                     # right in the photo: smaller angles
+    y = top + (np.arange(Ht) + 0.5) / Ht * (bottom - top)
+    xx, yy = np.meshgrid(x, y)
+    colour = np.stack([ndimage.map_coordinates(rgb[..., i].astype(float), [yy, xx], order=1, mode="nearest")
+                       for i in range(3)], -1) / 255
+    ok = ndimage.map_coordinates(keep.astype(float), [yy, xx], order=1, mode="constant") > 0.5
+    weight = np.where(ok & seen[None, :], np.cos(np.radians(phi))[None, :] ** 3, 0.0)
+    return colour, weight, 2 * half / (bottom - top)
+
+
+def wrap_can(cutouts: list, hands: list | None = None, size=(2048, 1024)) -> tuple[bytes, float, float]:
+    """A solid can from cut-out photos (RGBA uint8 arrays) taken a quarter turn apart, the same
+    way round each time. Returns the GLB (height 1, standing on y = 0, axis at x = z = 0), its
+    width / height, and the turn found between photos (degrees: +90 or -90)."""
+    from PIL import Image
+    from scipy import ndimage
+    W, Ht = size
+    hands = (list(hands or []) + [[]] * len(cutouts))[:len(cutouts)]
+    best = None
+    for turn in ((90.0, -90.0) if len(cutouts) > 1 else (90.0,)):
+        views = [_unroll(c, hands[k], FACE_CAMERA + k * turn, W, Ht) for k, c in enumerate(cutouts)]
+        # How well neighbours agree where both see the surface: the wrong way round, they do not.
+        cost = 0.0
+        for k in range(len(views)):
+            (c1, w1, _), (c2, w2, _) = views[k], views[(k + 1) % len(views)]
+            both = np.minimum(w1, w2)
+            if len(views) > 2 or k == 0:
+                cost += float((np.abs(c1 - c2).sum(-1) * both).sum() / max(both.sum(), 1e-6))
+        if best is None or cost < best[0]:
+            best = (cost, turn, views)
+    _, turn, views = best
+    colour = sum(c * w[..., None] for c, w, _ in views)
+    weight = sum(w for _, w, _ in views)
+    have = weight > 0.05
+    image = np.where(have[..., None], colour / np.maximum(weight, 1e-9)[..., None], 0)
+    seen_colours = image[have] if have.any() else np.zeros((1, 3))
+    lum = seen_colours @ _LUM
+    base = np.median(seen_colours[lum <= np.median(lum)], axis=0)
+    if have.any() and not have.all():
+        dist, (iy, ix) = ndimage.distance_transform_edt(~have, return_indices=True)
+        t = np.clip(dist / 40.0, 0, 1)[..., None]
+        image = np.where(have[..., None], image, image[iy, ix] * (1 - t) + base * t)
+    elif not have.any():
+        image[:] = base
+    png = io.BytesIO()
+    Image.fromarray((np.clip(image, 0, 1) * 255).round().astype(np.uint8)).save(png, "PNG", optimize=True)
+    aspect = float(np.median([a for _, _, a in views]))
+
+    # The can: its side wearing the photos, a lid and a bottom.
+    N, rows, H = 128, 9, 1.0
+    R = aspect * H / 2
+    a = np.linspace(-np.pi, np.pi, N + 1)
+    ring = np.stack([np.cos(a), np.zeros_like(a), np.sin(a)], 1)
+    ys = np.linspace(0, H, rows)
+    side_p = np.concatenate([ring * R + [0, y, 0] for y in ys])
+    side_n = np.tile(ring, (rows, 1))
+    side_uv = np.concatenate([np.stack([np.arange(N + 1) / N, np.full(N + 1, 1 - y / H)], 1) for y in ys])
+    side_f = np.concatenate([_strip(i * (N + 1), (i + 1) * (N + 1), N) for i in range(rows - 1)])
+    discs = []
+    for y, up, name in ((H, 1.0, "lid"), (0.0, -1.0, "plain")):
+        p = np.concatenate([ring * R + [0, y, 0], [[0, y, 0]]])
+        n = np.tile([0, up, 0], (N + 2, 1))
+        f = np.array([[N + 1, i, i + 1] for i in range(N)])
+        discs.append((p, n, None, _wind(p, n, f), name))
+    prims = [(side_p, side_n, side_uv, _wind(side_p, side_n, side_f), "print")] + discs
+    lin = srgb_to_linear(base)
+    return _glb(prims, png.getvalue(), {"lid": np.array([0.55, 0.56, 0.58]), "plain": lin}), aspect, turn
 
 
 # ----------------------------------------------------------------------------- glTF

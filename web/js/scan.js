@@ -30,6 +30,7 @@ const VIDEO_SECONDS = 8;        // one turn, in video mode
 const STEPS = {
   starting: "Starting", sending: "Sending the photos to the GPU", loading: "Loading Idol on the GPU",
   fusing: "Putting the sides together", model: "Making the 3D model",
+  cutting: "SAM 2 is cutting the can out", wrapping: "Wrapping the photos around a cylinder",
 };
 
 export class Scanner {
@@ -76,6 +77,14 @@ export class Scanner {
 
   // On the GPU PC (or this machine's GPU), not Idol's public demo or a test file.
   get onGpu() { return ["remote", "local"].includes(this.health?.backend); }
+
+  // A can (or another drink) is not given to Idol: its photos are wrapped around a cylinder
+  // (docker/scan_server.py). The same words as the server's, which says which.
+  wraps(name) {
+    const words = this.health?.wrap_words || [];
+    const text = ` ${name.toLowerCase().split(/\s+/).join(" ")} `;
+    return words.some((w) => text.includes(` ${w} `) || text.includes(` ${w}s `));
+  }
 
   async _check() {
     let health = null;
@@ -318,7 +327,8 @@ export class Scanner {
     });
   }
 
-  // The middle square of the camera picture (the dashed frame), at most 1024 pixels.
+  // The middle square of the camera picture (the dashed frame), at most 1024 pixels, with where
+  // the hands holding the object are in it (canvas.hands): the scanner keeps them out of the model.
   _shot() {
     const video = $("scan-cam");
     const side = Math.min(video.videoWidth, video.videoHeight);
@@ -326,6 +336,14 @@ export class Scanner {
     canvas.width = canvas.height = Math.min(side, 1024);
     canvas.getContext("2d").drawImage(video, (video.videoWidth - side) / 2, (video.videoHeight - side) / 2,
       side, side, 0, 0, canvas.width, canvas.height);
+    canvas.hands = [];
+    try {
+      const found = this.hands?.detectForVideo(video, Math.max(performance.now(), (this.handClock || 0) + 1));
+      this.handClock = performance.now();
+      const x0 = (video.videoWidth - side) / 2, y0 = (video.videoHeight - side) / 2;
+      canvas.hands = (found?.landmarks || []).map((hand) => hand.map((p) => [
+        +((p.x * video.videoWidth - x0) / side).toFixed(4), +((p.y * video.videoHeight - y0) / side).toFixed(4)]));
+    } catch { /* no hand tracking: SAM 2 alone */ }
     return canvas;
   }
 
@@ -351,7 +369,7 @@ export class Scanner {
   // A thumbs-up to the camera starts the scan (held for half a second, so it is meant).
   async _watchHands() {
     try {
-      this.hands ||= await loadHandLandmarker();
+      this.hands ||= await loadHandLandmarker({ numHands: 2 });   // both: holding an object takes two
     } catch { return; }                            // no hand tracking: the other ways still work
     const video = $("scan-cam");
     const look = () => {
@@ -367,7 +385,7 @@ export class Scanner {
   // Recording mode: a thumbs-up to the webcam bubble starts a scan with the panel closed.
   async watchIdle(video) {
     try {
-      this.hands ||= await loadHandLandmarker();
+      this.hands ||= await loadHandLandmarker({ numHands: 2 });
     } catch { return; }
     const look = () => {
       if (this.state === "closed" && this.quickStart() && !$("btn-scan").hidden && video.readyState >= 2 && video.videoWidth) {
@@ -408,8 +426,10 @@ export class Scanner {
     const height = parseFloat($("scan-height").value) || 10;
     const n = canvases.length;
     const where = this.onGpu ? "on the GPU" : `(${this.health?.where || "Idol"})`;
-    this._status(n > 1 ? `${n} photos taken. Idol is turning them into 3D ${where}…` : `Photo taken. Idol is turning it into 3D ${where}…`, "busy");
-    this.onEvent("start", { name, views: n, backend: this.health?.backend, gpu: this.health?.gpu });
+    const wrap = this.wraps(name);
+    this._status(wrap ? `${n > 1 ? `${n} photos` : "Photo"} taken. SAM 2 cuts the can out ${where}, then it is wrapped around a cylinder…`
+      : n > 1 ? `${n} photos taken. Idol is turning them into 3D ${where}…` : `Photo taken. Idol is turning it into 3D ${where}…`, "busy");
+    this.onEvent("start", { name, views: n, backend: this.health?.backend, gpu: this.health?.gpu, wrap });
     this._cardStart(name, canvases);
     const form = new FormData();
     for (const [k, canvas] of canvases.entries()) {
@@ -417,6 +437,7 @@ export class Scanner {
     }
     form.append("name", name);
     form.append("height_cm", String(height));
+    form.append("hands", JSON.stringify(canvases.map((c) => c.hands || [])));
     const poll = setInterval(() => this._poll(), 1000);
     try {
       const r = await fetch("./scan/scan", { method: "POST", body: form });
@@ -424,8 +445,10 @@ export class Scanner {
       if (!r.ok) throw new Error(answer.detail || `the scanner answered ${r.status}`);
       clearInterval(poll);
       this.onEvent("done", { ...answer, onGpu: this.onGpu });
-      this._cardEnd(true, `“${answer.name}” is ready`, `3D from ${n > 1 ? `${n} photos` : "one photo"} in ${Math.round(answer.seconds)} s`
-        + (answer.solid ? " · made solid" : ` · ${(answer.points || 0).toLocaleString()} points`));
+      this._cardEnd(true, `“${answer.name}” is ready`, answer.how === "wrapped"
+        ? `${n > 1 ? `${n} photos` : "One photo"} wrapped around a cylinder in ${Math.round(answer.seconds)} s`
+        : `3D from ${n > 1 ? `${n} photos` : "one photo"} in ${Math.round(answer.seconds)} s`
+          + (answer.solid ? " · made solid" : ` · ${(answer.points || 0).toLocaleString()} points`));
       this._changed();
       this.state = "ready";
       this.close();
@@ -465,17 +488,32 @@ export class Scanner {
     $("scan-panel").hidden = true;
     const n = canvases.length, remote = this.health?.backend === "remote";
     const gpu = this.health?.gpu ? ` · ${this.health.gpu}` : "";
-    $("idol-title").textContent = `Idol is building “${name}” in 3D`;
+    const wrap = this.wraps(name);
+    $("idol-title").textContent = wrap ? `Wrapping “${name}” from your photos` : `Idol is building “${name}” in 3D`;
     $("idol-where").textContent = remote ? `on ${this.pcName}'s GPU${gpu}`
       : this.health?.backend === "local" ? `on this computer's GPU${gpu}` : (this.health?.where || "");
     $("idol-photos").replaceChildren(...canvases.map((c, k) => Object.assign(document.createElement("img"),
       { src: c.toDataURL("image/jpeg", 0.7), alt: `photo ${k + 1}` })));
     const steps = [];
-    if (remote) steps.push(["sending", `Sending ${n > 1 ? `the ${n} photos` : "the photo"} to ${this.pcName}`]);
-    if (this.onGpu) steps.push(["loading", "Loading Idol and SAM 2 into the GPU's memory"]);
-    steps.push(["idol", n > 1 ? "Each photo: cut out, → 3D Gaussians" : "The photo: cut out, → 3D Gaussians"]);
-    if (n > 1) steps.push(["fusing", "Finding each photo's turn, merging the sides"]);
-    steps.push(["model", "The 3D model, at the object's real size"]);
+    if (wrap) {
+      steps.push(["cutting", `SAM 2 on ${remote ? this.pcName : "the GPU"}: the can cut out of each photo, hands erased`]);
+      steps.push(["wrapping", "The photos unrolled around a cylinder, side by side"]);
+      steps.push(["model", "The 3D can, at its real size"]);
+      this.notes = [
+        "A can is a cylinder: all the photos have to tell is how wide it is and what its label looks like.",
+        "SAM 2, Meta's segment-anything model, cuts the can out of each photo. Your hands are found by the browser's hand tracker and erased.",
+        "Each column of a photo is a strip of the label, at an angle from the middle; the four photos cover the whole way round.",
+        "Where two photos overlap, the one looking at it more head-on counts more. Which way you turned it is found from those overlaps.",
+        "Rounder things with handles, like a mug, still go through Idol, the image-to-3D model.",
+      ];
+    }
+    if (remote && !wrap) steps.push(["sending", `Sending ${n > 1 ? `the ${n} photos` : "the photo"} to ${this.pcName}`]);
+    if (this.onGpu && !wrap) steps.push(["loading", "Loading Idol and SAM 2 into the GPU's memory"]);
+    if (!wrap) {
+      steps.push(["idol", n > 1 ? "Each photo: cut out (without hands), → 3D Gaussians" : "The photo: cut out (without hands), → 3D Gaussians"]);
+      if (n > 1) steps.push(["fusing", "Finding each photo's turn, merging the sides"]);
+      steps.push(["model", "The 3D model, at the object's real size"]);
+    }
     $("idol-steps").replaceChildren(...steps.map(([key, text]) => {
       const li = document.createElement("li");
       li.dataset.key = key;
@@ -483,9 +521,9 @@ export class Scanner {
       return li;
     }));
     const gaussians = (this.health?.gaussians || 262144).toLocaleString();
-    this.notes = [
+    if (!wrap) this.notes = [
       `Idol, an open image-to-3D model by Sperid Labs, turns each photo into ${gaussians} 3D Gaussians: small coloured, see-through blobs.`,
-      "First SAM 2, Meta's segment-anything model, cuts the object out of each photo, so nothing behind it becomes 3D.",
+      "First SAM 2, Meta's segment-anything model, cuts the object out of each photo, so nothing behind it (and no hand holding it) becomes 3D.",
       n > 1 ? "From one photo it has to invent the hidden sides; the other photos show what they really look like." : "From one photo it invents the sides the camera did not see.",
       `It runs on ${remote ? this.pcName : "this computer"}'s GPU. The language model steps aside meanwhile, to give it the video memory.`,
       n > 1 ? "Then the results are turned until the surfaces they share match, and merged into one object." : "Then the blobs become points with the object's real height.",
@@ -505,7 +543,7 @@ export class Scanner {
       if (Math.floor(s) % 7 === 0 && Math.floor(s) !== this.card.noteAt) { this.card.noteAt = Math.floor(s); this._cardNote(); }
       this._cardDraw();
     }, 250);
-    this._cardProgress({ step: remote ? "sending" : this.onGpu ? "loading" : "idol", view: 1, views: n });
+    this._cardProgress({ step: wrap ? "cutting" : remote ? "sending" : this.onGpu ? "loading" : "idol", view: 1, views: n });
   }
 
   _cardNote() {
@@ -543,7 +581,7 @@ export class Scanner {
     const at = items.findIndex((li) => li.dataset.key === this.card.key);
     const c = this.card, now = performance.now();
     const t = c.viewTimes, perView = t.length ? t.reduce((a, b) => a + b, 0) / t.length : 45;
-    const typical = { sending: 3, loading: 25, idol: perView * c.n, fusing: 15, model: 4 };
+    const typical = { sending: 3, loading: 25, idol: perView * c.n, fusing: 15, model: 4, cutting: 12, wrapping: 4 };
     let total = 0, done = 0;
     items.forEach((li, i) => {
       const key = li.dataset.key, expect = typical[key] || 5;

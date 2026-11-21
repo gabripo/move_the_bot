@@ -227,7 +227,8 @@ the robot answers with its built-in rules only.
 Idol makes a whole object from each photo; what differs is which side it really saw. The scan
 server (or `photo_to_3d.py` with several `--ply`) puts them together:
 
-1. Each splat is scaled to the same height and stood on the same footprint.
+1. Each splat is scaled to the same height and stood on the same footprint, or centred on its
+   body when a hand under it makes the footprint wider than the object.
 2. **How far was it turned?** Each photo against the one before: every turn within 30° of a
    quarter turn is tried, and the one where the shapes match best wins, the colours counting only
    where both photos really saw the surface (Idol invents the rest). Both directions are tried;
@@ -240,6 +241,35 @@ Tried on four renders of a model whose true angles are known: one photo invents 
 on the back; four photos show the real back, and the angles come out within about 15° of the
 truth (`tests/unit/test_scan_server.py` and `test_photo_to_3d.py` check the same with synthetic
 views).
+
+### Hands
+
+You hold the object, so your hands are in every photo, and SAM 2 easily keeps them as part of it.
+The browser's hand tracker (the same one as hand control) notes where both hands are in each
+photo, and the scan server uses that twice: the wrist, palm and fingertips are told to SAM 2 as
+"not the object", and what is left of the hands (their outline, grown a little) is erased from
+the cut-out. Idol fills in what the fingers hid. Holding the object by its top and bottom, not
+around its middle, still helps.
+
+### Cans: wrapped, not Idol
+
+A can is a cylinder, so it does not need Idol at all: its photos only have to tell how wide it is
+and what its label looks like. A scan named like a can or another drink ("monster drink", "coke
+can": `solid_mug.CAN_WORDS`) goes another way, when SAM 2 is there (`IDOL_BACKEND=remote` or
+`local`):
+
+1. **Cut out.** The GPU PC's scan server answers `POST /cutout` with SAM 2's cut-outs, hands
+   erased. SAM 2 is small: the language model stays loaded, and it takes seconds.
+2. **The can in each photo.** The rows as wide as the body around the middle of its height give
+   its left and right edges, its top and its bottom (a hand under it is not as wide; skin colours
+   that reach out of the can are not the can).
+3. **Wrapped.** A column of a photo at s (-1 left, 1 right) shows the label at the angle asin(s)
+   from the photo's direction, so the photos, a quarter turn apart, are unrolled side by side
+   around a cylinder of the measured proportions; where they overlap, the one seeing it more
+   head-on counts more. Both ways of turning are tried, and the one whose overlaps agree wins.
+
+The label comes out as sharp as the photos, and the scan takes seconds rather than minutes.
+`WRAP=0` sends cans to Idol like anything else; mugs (a handle) always go to Idol.
 
 ### Testing the scanner
 

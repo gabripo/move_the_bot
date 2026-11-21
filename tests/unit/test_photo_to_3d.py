@@ -123,3 +123,17 @@ def test_one_view_invents_the_back_but_four_views_see_it():
     assert back_colour(views[0])[2] < 0.6                      # one photo: the back is invented grey
     assert back_colour(fused)[2] > 0.8 and back_colour(fused)[0] < 0.2   # four photos: really blue
     assert np.allclose(np.linalg.norm(np.stack([fused[f"rot_{i}"] for i in range(4)], 1), axis=1), 1)
+
+
+def test_a_hand_under_the_object_does_not_move_its_centre():
+    rng = np.random.default_rng(2)
+    n = 6000
+    a = rng.uniform(0, 2 * np.pi, n)
+    h = rng.uniform(0, 1, n)
+    xyz = np.stack([0.2 * np.cos(a), -h, 0.2 * np.sin(a)], 1)              # y down, like Idol's
+    hand = np.stack([rng.uniform(0.0, 0.6, 1500), rng.uniform(-0.05, 0.08, 1500), rng.uniform(-0.15, 0.15, 1500)], 1)
+    pts = np.concatenate([xyz, hand])
+    v = {"x": pts[:, 0], "y": pts[:, 1], "z": pts[:, 2], "opacity": np.full(len(pts), 5.0)}
+    centred, _, _ = photo_to_3d._normalise(v)
+    body = centred[:n]
+    assert abs(np.median(body[:, 0])) < 0.05 and abs(np.median(body[:, 2])) < 0.05

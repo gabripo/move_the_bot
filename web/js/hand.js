@@ -21,13 +21,13 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 // A MediaPipe hand tracker for one hand in a video: from this server when it has the files
 // (docker/web fetches them at build time), else from the CDN. GPU when the browser allows it.
 let visionModule = null;
-export async function loadHandLandmarker() {
+export async function loadHandLandmarker({ numHands = 1 } = {}) {
   visionModule ||= import(`${LOCAL}/vision_bundle.mjs`);
   const vision = await visionModule;
   const local = await fetch(`${LOCAL}/hand_landmarker.task`, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
   const options = (model, delegate) => ({
     baseOptions: { modelAssetPath: model, delegate },
-    runningMode: "VIDEO", numHands: 1,
+    runningMode: "VIDEO", numHands,
     minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.6,
   });
   const model = local ? `${LOCAL}/hand_landmarker.task` : CDN_MODEL;

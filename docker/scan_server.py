@@ -26,11 +26,23 @@ Endpoints (image: one or more photos; gaussians, optional: the detail per photo,
                                                    and small pictures of what Idol was shown (cutouts)
   POST /scan   image, name, height_cm, gaussians   the model in the cache -> {name, model, size, ...}
   POST /splat  image, gaussians                    only the (fused) splat, .ply: what a remote server answers
+  POST /cutout image                               only the cut-outs (SAM 2), PNGs in JSON: for cans (below)
   GET  /scans                                      the objects scanned so far -> [{name, model, size, made}]
   DELETE /scans/{name}                             forget one: 'create a <name>' draws it as before the scan
+
+POST /scan, /splat and /cutout also take `hands`: where the browser saw hands in each photo (JSON,
+per photo a list of hands of 21 [x, y] points, 0..1 of the photo). Hands hold the object, and
+without this they become part of it: SAM 2 is told they are not the object, and they are erased
+from the cut-out.
+
+Cans and other drinks (solid_mug.is_can_name) are not given to Idol: a can is a cylinder, so its
+photos, cut out by SAM 2, are wrapped around one (solid_mug.wrap_can). That keeps the real label,
+sharp, and takes seconds. Idol makes everything else (and a can when there is no SAM 2 to ask).
+WRAP=0 sends cans to Idol too.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -133,18 +145,24 @@ class Cutter:
         self.device = device
         self.remover = background_remover           # Idol's BiRefNet, when there is one
 
-    def __call__(self, image):
+    def __call__(self, image, hands=None):
         """The object in the middle of `image`, on a transparent background (RGBA, the size of
-        `image`), and how it was found."""
+        `image`), and how it was found. `hands`: hand landmarks seen in it (0..1), not the object."""
         import numpy as np
         import torch
         from PIL import Image, ImageFilter
         rgb = image.convert("RGB")
         w, h = rgb.size
+        # Points on the hands, told to SAM 2 as "not this": the wrist, the palm and the fingertips,
+        # unless one is right where the object is asked for (the middle).
+        no = [[x * w, y * h] for hand in hands or [] for i, (x, y) in enumerate(hand)
+              if i in (0, 4, 8, 9, 12, 16, 20) and abs(x - 0.5) + abs(y - 0.5) > 0.1]
+
         def ask(points, box=None):
             """SAM 2's objects for these prompts: (score, area, mask), the plausible ones."""
             kwargs = {"input_boxes": [[box]]} if box else {}
-            inputs = self.processor(images=rgb, input_points=[[points]], input_labels=[[[1] * len(points)]],
+            inputs = self.processor(images=rgb, input_points=[[points + no]],
+                                    input_labels=[[[1] * len(points) + [0] * len(no)]],
                                     return_tensors="pt", **kwargs).to(self.device)
             with torch.no_grad():
                 out = self.model(**inputs, multimask_output=True)
@@ -200,6 +218,12 @@ class Cutter:
             both = fine & grown
             if both.sum() > 0.6 * best.sum():
                 alpha, how = both, how + " ∩ BiRefNet"
+        if hands:
+            # Whatever is left of the hands goes, with a margin: Idol fills the gaps behind fingers.
+            without = alpha & ~hand_mask(hands, w, h)
+            if without.sum() > 0.3 * alpha.sum():
+                alpha = _around_center(without) if without[h // 2, w // 2] else without
+                how += " − hands"
         out_image = rgb.copy()
         out_image.putalpha(Image.fromarray(alpha.astype(np.uint8) * 255))
         return out_image, how
@@ -228,18 +252,67 @@ def _around_center(mask):
     return mask & big
 
 
+def hand_mask(hands, w: int, h: int):
+    """Where the hands are in a w x h picture: each hand's outline (the convex hull of its 21
+    points, 0..1) grown by a quarter around its middle, so the fingers' width is in it too."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    canvas = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(canvas)
+    for hand in hands or []:
+        points = np.asarray(hand, dtype=float).reshape(-1, 2) * [w, h]
+        if len(points) < 5:
+            continue
+        hull = _hull(points)
+        middle = points.mean(0)
+        draw.polygon([tuple(p) for p in middle + 1.25 * (hull - middle)], fill=255)
+    return np.array(canvas) > 0
+
+
+def _hull(points):
+    """The convex hull of 2D points, in order (Andrew's monotone chain)."""
+    import numpy as np
+    p = sorted(map(tuple, points))
+
+    def half(seq):
+        out = []
+        for q in seq:
+            while len(out) >= 2 and ((out[-1][0] - out[-2][0]) * (q[1] - out[-2][1])
+                                     - (out[-1][1] - out[-2][1]) * (q[0] - out[-2][0])) <= 0:
+                out.pop()
+            out.append(q)
+        return out
+    return np.array(half(p)[:-1] + half(p[::-1])[:-1])
+
+
+def _parse_hands(text: str, views: int) -> list:
+    """The `hands` form field: per photo, a list of hands of 21 [x, y] points. Anything odd: none."""
+    import json
+    try:
+        data = json.loads(text) if text else []
+        hands = [[[[float(x), float(y)] for x, y in hand][:21] for hand in photo][:4] for photo in data]
+    except (ValueError, TypeError):
+        return [[] for _ in range(views)]
+    return (hands + [[] for _ in range(views)])[:views]
+
+
 def _load_cutter() -> None:
     global _cutter, _cutter_broken
     if CUTOUT and _cutter is None and not _cutter_broken:
         log.info("Loading %s to cut out the objects…", CUTOUT_MODEL)
         try:
-            _cutter = Cutter(_pipeline.device, getattr(_pipeline, "background_remover", None))
+            if _pipeline is not None:
+                device, remover = _pipeline.device, getattr(_pipeline, "background_remover", None)
+            else:                                 # only cutting out (cans): SAM 2 alone
+                import torch
+                device, remover = ("cuda" if torch.cuda.is_available() else "cpu"), None
+            _cutter = Cutter(device, remover)
         except Exception as e:
             _cutter_broken = str(e)[:200]
             raise
 
 
-def _cutout(photo: Path) -> Path:
+def _cutout(photo: Path, hands=None) -> Path:
     """The photo with only the object left (a PNG next to it), or the photo itself when that fails."""
     if not CUTOUT or _cutter_broken:
         return photo
@@ -248,7 +321,7 @@ def _cutout(photo: Path) -> Path:
         _load_cutter()
         image = Image.open(photo)
         image.thumbnail((1024, 1024))
-        cut, how = _cutter(image)
+        cut, how = _cutter(image, hands)
         if cut is None:
             log.info("%s: %s; Idol removes the background itself", photo.name, how)
             return photo
@@ -338,7 +411,7 @@ def _idol_demo(photo: Path, gaussians: int) -> Path:
     return Path(result)
 
 
-def make_splat(photos: list[Path], gaussians: int) -> tuple[bytes, list[float]]:
+def make_splat(photos: list[Path], gaussians: int, hands: list | None = None) -> tuple[bytes, list[float]]:
     """Run Idol on the photos, wherever IDOL_BACKEND says: one splat (.ply bytes), fused when
     there are several photos, and the angle each photo was found at (degrees, the first at 0)."""
     global _pipeline
@@ -348,7 +421,8 @@ def make_splat(photos: list[Path], gaussians: int) -> tuple[bytes, list[float]]:
         _progress(step="sending")
         files = [("image", (p.name, p.read_bytes(), "image/jpeg")) for p in photos]
         try:
-            r = requests.post(IDOL_URL + "/splat", data={"gaussians": gaussians}, files=files, timeout=3600)
+            r = requests.post(IDOL_URL + "/splat", data={"gaussians": gaussians, "hands": json.dumps(hands or [])},
+                              files=files, timeout=3600)
         except requests.RequestException:
             raise HTTPException(503, "The GPU PC's scan server does not answer: is it on, and its AI "
                                      "switched on (ai-switch on)?")
@@ -368,6 +442,8 @@ def make_splat(photos: list[Path], gaussians: int) -> tuple[bytes, list[float]]:
         if _pipeline is None:
             _progress(step="loading")
             _pipeline = _local_pipeline()
+        if _cutter is not None and _cutter.remover is None:      # loaded for cans: now BiRefNet too
+            _cutter.remover = getattr(_pipeline, "background_remover", None)
         if CUTOUT and _cutter is None:
             _progress(step="loading")
             try:
@@ -377,7 +453,7 @@ def make_splat(photos: list[Path], gaussians: int) -> tuple[bytes, list[float]]:
         seen = []                                         # what Idol was shown, for the progress
         for k, photo in enumerate(photos):                # the model stays loaded for all of them
             _progress(step="idol", view=k + 1, views=len(photos), view_started=time.time(), cutouts=seen)
-            cut = _cutout(photo)
+            cut = _cutout(photo, (hands or [[]] * len(photos))[k])
             seen = seen + [_preview(cut)]
             _progress(cutouts=seen)
             out = photo.with_suffix(".ply")
@@ -436,7 +512,9 @@ def _progress_reset(kind: str | None, views: int) -> None:
 @app.get("/health")
 def health() -> dict:
     answer = {"ok": True, "backend": BACKEND, "where": WHERE[BACKEND], "gaussians": GAUSSIANS,
-              "max_views": MAX_VIEWS}
+              "max_views": MAX_VIEWS,
+              # names whose scans are wrapped around a cylinder, not given to Idol (the browser's card)
+              "wrap_words": list(solid_mug.CAN_WORDS) if WRAP and solid_mug and BACKEND in ("remote", "local") else []}
     if BACKEND == "remote":                       # no Scan button while the GPU PC's AI is off
         try:
             r = requests.get(IDOL_URL + "/health", timeout=3)
@@ -492,17 +570,101 @@ def _solid(kind: str, points, colours) -> tuple[bytes | None, bool]:
         return None, False
 
 
+WRAP = os.environ.get("WRAP", "1") != "0"
+
+
+def wraps(kind: str) -> bool:
+    """Whether a scan of `kind` is wrapped around a cylinder rather than given to Idol: a can or
+    another drink, when SAM 2 is there to cut it out (the GPU PC, or this machine's GPU)."""
+    return WRAP and solid_mug is not None and BACKEND in ("remote", "local") and solid_mug.is_can_name(kind)
+
+
+def cutouts(photos: list[Path], hands: list) -> list:
+    """Each photo cut out by SAM 2 (RGBA arrays), here or on the GPU PC. Raises when it cannot."""
+    import base64
+    import io
+    import numpy as np
+    from PIL import Image
+    if BACKEND == "remote":
+        files = [("image", (p.name, p.read_bytes(), "image/jpeg")) for p in photos]
+        try:
+            r = requests.post(IDOL_URL + "/cutout", data={"hands": json.dumps(hands)}, files=files, timeout=300)
+        except requests.RequestException as e:
+            raise RuntimeError(f"the GPU PC does not answer ({e})") from None
+        if r.status_code != 200:
+            raise RuntimeError(f"the GPU PC answered {r.status_code} to /cutout (an older scan server?)")
+        pngs = [base64.b64decode(c) for c in r.json()["cutouts"]]
+    else:
+        pngs = [Path(p).read_bytes() for p in _cutouts_here(photos, hands)]
+    return [np.array(Image.open(io.BytesIO(png)).convert("RGBA")) for png in pngs]
+
+
+def _cutouts_here(photos: list[Path], hands: list) -> list[Path]:
+    _load_cutter()
+    out = []
+    for k, photo in enumerate(photos):
+        _progress(step="cutting", view=k + 1, views=len(photos))
+        cut = _cutout(photo, hands[k])
+        if cut == photo:
+            raise RuntimeError(f"SAM 2 could not cut out photo {k + 1}")
+        out.append(cut)
+    return out
+
+
+def _small(rgba) -> str:
+    """A small JPEG (data URL) of a cut-out on black, for the progress card."""
+    import base64
+    import io
+    import numpy as np
+    from PIL import Image
+    a = rgba[..., 3:] / 255.0
+    image = Image.fromarray((rgba[..., :3] * a).astype(np.uint8))
+    ys, xs = np.nonzero(rgba[..., 3] > 127)
+    if len(xs):
+        image = image.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
+    image.thumbnail((160, 160))
+    buf = io.BytesIO()
+    image.save(buf, "JPEG", quality=80)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
 @app.post("/scan")
 def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: float = Form(10.0),
-         gaussians: int | None = Form(None)) -> dict:
+         gaussians: int | None = Form(None), hands: str = Form("")) -> dict:
     kind = object_name(name)
     n = detail(gaussians)
     if not 2 <= height_cm <= 30:
         raise HTTPException(400, "The height must be between 2 and 30 cm: the arm lifts small things.")
 
+    def wrapped(photos: list[Path], seen_hands: list, start: float) -> dict | None:
+        """A can: its photos wrapped around a cylinder. None when that did not work (then Idol)."""
+        try:
+            _progress(step="cutting", view=1, views=len(photos))
+            cut = cutouts(photos, seen_hands)
+            _progress(step="wrapping", cutouts=[_small(c) for c in cut])
+            glb, aspect, turn = solid_mug.wrap_can(cut, seen_hands)
+        except Exception as e:                    # Idol can still make it
+            log.warning("Could not wrap %s around a cylinder (%s): Idol makes it instead", kind, e)
+            return None
+        _progress(step="model")
+        height = height_cm / 100
+        size = (min(height * aspect, 0.25), min(height * aspect, 0.25), height)
+        model = models3d.save_scanned(kind, glb, size, MODELS_DIR)
+        took = time.monotonic() - start
+        log.info("Scanned %s from %d photo(s) in %.1f s: wrapped around a cylinder (turned %+d° each), %s",
+                 kind, len(photos), took, turn, size)
+        return {"name": kind, "model": model, "size": [round(v, 3) for v in size], "points": 0, "solid": True,
+                "how": "wrapped", "views": len(photos), "angles": [round(k * turn) for k in range(len(photos))],
+                "seconds": round(took, 1), "backend": BACKEND, "where": WHERE[BACKEND]}
+
     def work(photos: list[Path]) -> dict:
         start = time.monotonic()
-        splat, angles = make_splat(photos, n)
+        seen_hands = _parse_hands(hands, len(photos))
+        if wraps(kind):
+            done = wrapped(photos, seen_hands, start)
+            if done:
+                return done
+        splat, angles = make_splat(photos, n, seen_hands)
         _progress(step="model")
         points, colours = photo_to_3d.splat_to_points(photo_to_3d.parse_ply(splat))
         width, depth, height = photo_to_3d.real_size(points, height_cm / 100)
@@ -513,6 +675,7 @@ def scan(image: list[UploadFile] = File(...), name: str = Form(...), height_cm: 
         log.info("Scanned %s from %d photo(s) in %.1f s: %d points%s, %s", kind, len(photos), took, len(points),
                  ", made solid" if solid else "", size)
         return {"name": kind, "model": model, "size": [round(v, 3) for v in size], "points": len(points), "solid": solid,
+                "how": "idol",
                 "views": len(angles), "angles": [round(a) for a in angles], "seconds": round(took, 1),
                 "backend": BACKEND, "where": WHERE[BACKEND]}
 
@@ -538,12 +701,28 @@ def forget(name: str) -> dict:
     return {"removed": kind}
 
 
+@app.post("/cutout")
+def cutout_only(image: list[UploadFile] = File(...), hands: str = Form("")) -> dict:
+    """Only SAM 2's cut-outs (PNG, base64): what a remote server answers for a can. SAM 2 is small:
+    the language model stays loaded meanwhile."""
+    import base64
+    if BACKEND != "local":
+        raise HTTPException(400, "Cut-outs need SAM 2 on a GPU (IDOL_BACKEND=local).")
+
+    def work(photos: list[Path]) -> dict:
+        found = _cutouts_here(photos, _parse_hands(hands, len(photos)))
+        return {"cutouts": [base64.b64encode(p.read_bytes()).decode() for p in found]}
+
+    return _run(None, image, work)
+
+
 @app.post("/splat")
-def splat_only(image: list[UploadFile] = File(...), gaussians: int | None = Form(None)) -> Response:
+def splat_only(image: list[UploadFile] = File(...), gaussians: int | None = Form(None),
+               hands: str = Form("")) -> Response:
     n = detail(gaussians)
 
     def work(photos: list[Path]) -> Response:
-        splat, angles = make_splat(photos, n)
+        splat, angles = make_splat(photos, n, _parse_hands(hands, len(photos)))
         return Response(splat, media_type="application/octet-stream",
                         headers={"X-View-Angles": ",".join(f"{a:.1f}" for a in angles)})
 

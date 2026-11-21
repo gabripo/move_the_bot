@@ -111,3 +111,45 @@ def test_only_the_part_in_the_middle_is_kept(scanner):
     kept = scan_server._around_center(mask)
     assert kept[50, 50] and kept[30:70, 35:65].all() and not kept[5:10, 80:95].any()
     assert not scan_server._around_center(np.zeros((100, 100), bool)).any()
+
+
+def test_a_can_is_wrapped_from_its_cut_outs_not_idol(scanner, monkeypatch):
+    client, seen, _ = scanner
+    import scan_server
+    from test_solid_mug import can_photos
+    asked = {}
+
+    def cut(photos, hands):
+        asked["hands"] = hands
+        return can_photos(90.0, n=len(photos))
+    monkeypatch.setattr(scan_server, "cutouts", cut)
+    hands = '[[[[0.1, 0.9], [0.2, 0.95], [0.3, 0.9], [0.2, 0.8], [0.15, 0.85]]], [], [], []]'
+    r = client.post("/scan", data={"name": "monster drink", "height_cm": "17", "hands": hands}, files=photos(4))
+    assert r.status_code == 200, r.text
+    answer = r.json()
+    assert answer["how"] == "wrapped" and answer["solid"] and answer["angles"] == [0, 90, 180, 270]
+    assert abs(answer["size"][0] / answer["size"][2] - 104 / 260) < 0.05
+    assert not seen                                       # Idol was not asked
+    assert asked["hands"][0][0][0] == [0.1, 0.9] and asked["hands"][1] == []
+    assert "monster" in " ".join(client.get("/health").json()["wrap_words"])
+
+
+def test_a_can_goes_to_idol_when_it_cannot_be_cut_out(scanner, monkeypatch):
+    client, seen, _ = scanner
+    import scan_server
+
+    def broken(photos, hands):
+        raise RuntimeError("no SAM 2")
+    monkeypatch.setattr(scan_server, "cutouts", broken)
+    r = client.post("/scan", data={"name": "coke can", "height_cm": "12"}, files=photos(1))
+    assert r.status_code == 200, r.text
+    assert r.json()["how"] == "idol" and len(seen) == 1
+
+
+def test_hands_are_erased_where_they_are():
+    import scan_server
+    hand = [[0.1, 0.6], [0.3, 0.6], [0.3, 0.9], [0.1, 0.9], [0.2, 0.75]]
+    mask = scan_server.hand_mask([hand], 100, 100)
+    assert mask[75, 20] and not mask[20, 80]
+    assert scan_server._parse_hands("not json", 2) == [[], []]
+    assert scan_server._parse_hands('[[[[0.5, 0.5]]]]', 3) == [[[[0.5, 0.5]]], [], []]
