@@ -122,3 +122,10 @@ def test_a_can_is_wrapped_from_its_photos_the_right_way_round():
         assert abs(np.median(tex[30, :, 1]) - 255 * 30 / 180) < 15        # green: the height
         hand = (np.abs(tex[..., :3] - [225, 170, 140]).max(-1) < 20).mean()
         assert hand < 0.01, hand                                           # the hand is not painted on
+
+
+def test_a_squat_wide_shape_is_not_taken_for_a_can():
+    import pytest
+    wide = [np.pad(np.full((60, 300, 4), 200, np.uint8), ((170, 170), (50, 50), (0, 0))) for _ in range(2)]
+    with pytest.raises(ValueError):
+        solid_mug.wrap_can(wide, size=(180, 90))
